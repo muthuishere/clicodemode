@@ -199,3 +199,24 @@ func TestJSONResultReturnsObjectsAndThrowsOnFailure(t *testing.T) {
 		t.Fatalf("want a rejection with the stderr tail, got %+v", r)
 	}
 }
+
+func TestFlagsLastForPositionalFirstCommands(t *testing.T) {
+	var got []string
+	query := func(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+		got = append([]string{}, args...)
+		if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+			return errors.New("usage: query \"<terms>\" [--json]")
+		}
+		fmt.Fprintln(stdout, `{"hits":[1,2]}`)
+		return nil
+	}
+	reg := codemode.NewRegistry("t")
+	reg.MustRegister(FromRunner("ctx.query", "q", query, WithJSONResult("--json"), WithFlagsLast()))
+	r := codemode.NewEngine(reg).Run(context.Background(), `(await ops.ctx.query({args: ["store engine"]})).hits.length`, "p.js")
+	if !r.OK || r.Value != 2.0 {
+		t.Fatalf("got %+v (argv %q)", r, got)
+	}
+	if strings.Join(got, "|") != "store engine|--json" {
+		t.Fatalf("argv %q, want positionals then --json", got)
+	}
+}

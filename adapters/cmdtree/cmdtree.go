@@ -71,6 +71,7 @@ type config struct {
 	maxOutput   int
 	jsonFlag    string // set by WithJSONResult
 	jsonResult  bool
+	flagsLast   bool // set by WithFlagsLast
 }
 
 // WithFlagSet declares the command's flags: each becomes an optional input
@@ -103,6 +104,12 @@ func WithJSONResult(flag string) Option {
 	return func(c *config) { c.jsonFlag, c.jsonResult = flag, true }
 }
 
+// WithFlagsLast passes flags (including WithJSONResult's flag) after the
+// positional args, for commands that read positionals first
+// (`query "terms" --json`). The default is flags first, as stdlib flag.Parse
+// requires.
+func WithFlagsLast() Option { return func(c *config) { c.flagsLast = true } }
+
 // WithMaxOutput caps captured stdout and stderr each (default 8 MiB).
 func WithMaxOutput(n int) Option { return func(c *config) { c.maxOutput = n } }
 
@@ -134,12 +141,16 @@ func FromRunner(name, desc string, run Runner, opts ...Option) codemode.Operatio
 		Authorization: cfg.auth,
 		Examples:      cfg.examples,
 		Handler: func(ctx context.Context, in map[string]any) (any, error) {
-			argv, err := buildArgv(flags, in)
+			argv, err := buildArgv(flags, in, cfg.flagsLast)
 			if err != nil {
 				return nil, err
 			}
 			if cfg.jsonResult && cfg.jsonFlag != "" {
-				argv = append([]string{cfg.jsonFlag}, argv...) // flags before positionals, as flag.Parse needs
+				if cfg.flagsLast {
+					argv = append(argv, cfg.jsonFlag)
+				} else {
+					argv = append([]string{cfg.jsonFlag}, argv...) // flags before positionals, as flag.Parse needs
+				}
 			}
 			res := invoke(ctx, run, argv, cfg.maxOutput)
 			if !cfg.jsonResult {
@@ -230,7 +241,7 @@ func inputSchema(flags []flagSpec) json.RawMessage {
 	return b
 }
 
-func buildArgv(flags []flagSpec, in map[string]any) ([]string, error) {
+func buildArgv(flags []flagSpec, in map[string]any, flagsLast bool) ([]string, error) {
 	var argv []string
 	for _, f := range flags {
 		v, ok := in[f.name]
@@ -272,6 +283,9 @@ func buildArgv(flags []flagSpec, in map[string]any) ([]string, error) {
 			}
 			pos = append(pos, s)
 		}
+	}
+	if flagsLast {
+		return append(pos, argv...), nil
 	}
 	// Keep a positional that looks like a flag from being parsed as one.
 	if len(flags) > 0 && len(pos) > 0 && strings.HasPrefix(pos[0], "-") {
