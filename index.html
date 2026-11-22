@@ -83,7 +83,7 @@ footer{border-top:1px solid var(--line);padding:30px 0 60px;color:var(--mute);fo
 
 <main id="main">
 <div class="wrap hero">
-  <p class="eyebrow">v0.4.1 / MIT / pure Go</p>
+  <p class="eyebrow">v0.5.0 / MIT / pure Go</p>
   <h1><mark>Code Mode</mark> for every CLI. One process, not 25.</h1>
   <p class="deck">A library your CLI embeds. Agents like Claude Code, Codex and Cursor send one small program to <code>mycli code run</code>. It runs inside the CLI, in one process, and returns typed results.</p>
   <div class="cta">
@@ -109,7 +109,19 @@ footer{border-top:1px solid var(--line);padding:30px 0 60px;color:var(--mute);fo
     <tr><td>where it works</td><td>Claude Code terminal only (experimental; certain plans and models; not VS Code, Desktop or cloud)</td><td><strong>any agent</strong> (Codex, Cursor, Claude Code, CI), any shell</td></tr>
     <tr><td>who builds it</td><td>the agent</td><td>the CLI author, once, for every agent</td></tr>
     </tbody></table></div>
-  <p class="note">Model round trips are equal; this is not a claim to save any. kubectl is the example CLI: it does not ship CLI CodeMode today, and no kubectl timing is published until measured on a real cluster. Startup savings depend on the CLI. Toy footnote, not a headline: on the demo CLI (4 ms startup, default concurrency 32), 25 parallel operations in one process take 59 ms against 85 ms for 25 parallel processes; a real CLI with a heavier start will differ.</p>
+  <p class="note">Model round trips are equal; this is not a claim to save any. kubectl is the example CLI: it does not ship CLI CodeMode today, and no kubectl timing is published until measured on a real cluster. Startup savings depend on the CLI.</p>
+  <h3 class="sub">Using both</h3>
+  <p class="note" style="margin-top:0">Inside Claude Code's Code Mode, call the CLI once with data passed in (<code>code run --input</code>) instead of once per command. Check the build on a runner's <code>PATH</code> with <code>mycli code version</code>.</p>
+<pre>// inside Claude Code Code Mode: one process per CLI, not one per command
+const r = await $`mycli code run - --input ${JSON.stringify({ ids })} --json &lt; prog.js`.json()</pre>
+  <div class="tablewrap" style="margin-top:16px"><table style="min-width:480px">
+    <thead><tr><th>per call, same small operation (demo CLI, ~4 ms startup)</th><th>time</th></tr></thead>
+    <tbody>
+    <tr><td>one process per call (<code>$`mycli ...`</code>)</td><td>4.68 ms</td></tr>
+    <tr><td>one <code>code_run</code> call to a persistent <code>democli-mcp</code> session</td><td><strong>0.12 ms</strong></td></tr>
+    <tr><td>25 parallel calls: 25 processes vs one <code>code run</code></td><td>85 ms vs <strong>59 ms</strong></td></tr>
+    </tbody></table></div>
+  <p class="note">Toy CLI with a 4 ms startup, measured on the demo CLI. Real CLIs that read config, authenticate or open connections on start gain more, but that is not measured here. Model round trips are unchanged.</p>
 </div></section>
 
 <section><div class="wrap">
