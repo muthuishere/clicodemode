@@ -290,3 +290,28 @@ func TestSpec_MCP1(t *testing.T) {
 		}
 	}
 }
+
+func TestSpec_CLI10(t *testing.T) {
+	if code, out, _ := cli(t, "", "eval", "input.n * 2", "--input", `{"n": 21}`); code != 0 || strings.TrimSpace(out) != "42" {
+		t.Fatalf("eval --input: %d %q", code, out)
+	}
+	if code, out, _ := cli(t, "input.length", "run", "-", "--input=[1,2,3]"); code != 0 || strings.TrimSpace(out) != "3" {
+		t.Fatalf("run --input=: %d %q", code, out)
+	}
+	if code, out, _ := cli(t, "input === null", "run", "-"); code != 0 || strings.TrimSpace(out) != "true" {
+		t.Fatalf("input defaults to null: %d %q", code, out)
+	}
+	reg, calls := testRegistry(t)
+	var o, e strings.Builder
+	c := &CLI{Engine: NewEngine(reg), Name: "t code", Stdin: strings.NewReader(`await call("health.check")`), Stdout: &o, Stderr: &e}
+	if code := c.Main(t.Context(), []string{"run", "-", "--input", "{nope"}); code != 2 || calls.Load() != 0 {
+		t.Fatalf("invalid --input must exit 2 and run nothing: %d calls=%d %s", code, calls.Load(), e.String())
+	}
+}
+
+func TestSpec_CLI11(t *testing.T) {
+	code, out, _ := cli(t, "", "version")
+	if code != 0 || !regexp.MustCompile(`^test 1\.0 \(clicodemode \d+\.\d+\.\d+, spec codemode/v0\)\n$`).MatchString(out) {
+		t.Fatalf("version: %d %q", code, out)
+	}
+}

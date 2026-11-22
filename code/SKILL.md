@@ -62,6 +62,28 @@ default).
 
 Exit codes: 0 ok, 1 the program ran and failed, 2 errors (nothing ran).
 
+## Inside Claude Code's Code Mode (or any agent that writes code)
+
+If your own environment already lets you write code that makes tool calls
+(Claude Code Code Mode: `` $`...` `` runs a shell command), still send work for a
+Code Mode CLI as **one** program per CLI, not many commands:
+
+```js
+// not: 25 separate processes, each re-reading config and re-authenticating
+// for (const p of pods) await $`kubectl get pod ${p} -o json`
+
+// yes: one process, typed operations, only the result comes back
+const r = await $`kubectl code run - --input ${JSON.stringify({ pods })} --json < prog.js`.json()
+```
+
+- Pass data in with `--input JSON` (the program's global `input`); read the
+  result from `--json` (`{ok, value, error, diagnostics}`).
+- Your code joins results **across** CLIs; each CLI's program does the work
+  **within** that CLI.
+- Calling the same CLI many times in one session: use its MCP server
+  (`code_run`, optional `input`) so there is no new process per call.
+- Check the build on PATH with `<cli> code version`.
+
 ## Rules
 
 - Always `check` before `run` for anything with side effects; read

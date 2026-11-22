@@ -281,7 +281,7 @@ func (s *server) tools() []tool {
 	ts := []tool{
 		{Name: "code_capabilities", Description: "List every operation with its contract, the program language, and a fingerprint to cache on.", InputSchema: json.RawMessage(emptySchema), Annotations: ro},
 		{Name: "code_describe", Description: "Describe one operation: input/output schema, side effects, examples.", InputSchema: json.RawMessage(`{"type":"object","properties":{"operation":{"type":"string","description":"dotted operation name, e.g. health.check"}},"required":["operation"]}`), Annotations: ro},
-		{Name: "code_check", Description: "Check a program without running it; returns diagnostics with line:col.", InputSchema: json.RawMessage(`{"type":"object","properties":{"program":{"type":"string","description":"codemode-js source"}},"required":["program"]}`), Annotations: ro},
+		{Name: "code_check", Description: "Check a program without running it; returns diagnostics with line:col.", InputSchema: json.RawMessage(`{"type":"object","properties":{"program":{"type":"string","description":"codemode-js source"},"input":{"description":"any JSON value, exposed to the program as the global input"}},"required":["program"]}`), Annotations: ro},
 		{Name: "code_run", Description: "Run a codemode-js program that calls operations via call(name, args) or ops.a.b(args). Its result is the default export or the last expression.", InputSchema: json.RawMessage(`{"type":"object","properties":{"program":{"type":"string","description":"codemode-js source"}},"required":["program"]}`)},
 		{Name: "code_docs", Description: "Reference for the program language and every operation.", InputSchema: json.RawMessage(emptySchema), Annotations: ro},
 	}
@@ -388,7 +388,11 @@ func (s *server) call(ctx context.Context, name string, args map[string]any) (ma
 		if err != nil {
 			return nil, err
 		}
-		r := s.e.Run(ctx, src, programFile)
+		var input json.RawMessage
+		if v, ok := args["input"]; ok {
+			input, _ = json.Marshal(v)
+		}
+		r := s.e.RunWithInput(ctx, src, programFile, input)
 		return toolResult(r, !r.OK), nil
 	case "code_docs":
 		return textResult(codemode.Docs(s.e.Registry, s.opts.Name)), nil

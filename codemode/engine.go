@@ -284,12 +284,22 @@ type Result struct {
 // function it is called (and awaited) with no arguments; otherwise the
 // result is the default export or the last expression statement's value.
 func (e *Engine) Run(ctx context.Context, src, file string) Result {
+	return e.RunWithInput(ctx, src, file, nil)
+}
+
+// RunWithInput is Run with a JSON value exposed to the program as the
+// global `input` (null when input is nil). Callers such as an agent's own
+// code mode use it to pass data in: `mycli code run - --input '{...}'`.
+func (e *Engine) RunWithInput(ctx context.Context, src, file string, input json.RawMessage) Result {
 	start := time.Now()
 	p, diags := e.Compile(src, file)
 	if hasErrors(diags) {
 		return Result{OK: false, Error: "program has errors; nothing was run", Diagnostics: diags, MS: time.Since(start).Milliseconds(), NotRun: true}
 	}
-	it := e.newInterp(ctx, file)
+	it, err := e.newInterpInput(ctx, file, input)
+	if err != nil {
+		return Result{Error: err.Error(), NotRun: true}
+	}
 	defer it.Close()
 	v, err := it.Run(p.ast, file)
 	if err == nil {
@@ -307,6 +317,11 @@ func (e *Engine) Run(ctx context.Context, src, file string) Result {
 
 // Eval evaluates a single expression.
 func (e *Engine) Eval(ctx context.Context, expr string) Result {
+	return e.EvalWithInput(ctx, expr, nil)
+}
+
+// EvalWithInput is Eval with the global `input` (see RunWithInput).
+func (e *Engine) EvalWithInput(ctx context.Context, expr string, input json.RawMessage) Result {
 	start := time.Now()
 	x, err := js.ParseExpression(expr, "<eval>")
 	if err != nil {
@@ -318,7 +333,10 @@ func (e *Engine) Eval(ctx context.Context, expr string) Result {
 	if hasErrors(diags) {
 		return Result{Error: "expression has errors; nothing was run", Diagnostics: diags, NotRun: true}
 	}
-	it := e.newInterp(ctx, "<eval>")
+	it, err := e.newInterpInput(ctx, "<eval>", input)
+	if err != nil {
+		return Result{Error: err.Error(), NotRun: true}
+	}
 	defer it.Close()
 	v, err := it.Eval(x, "<eval>")
 	res := Result{OK: err == nil, Value: js.ToGo(v), MS: time.Since(start).Milliseconds()}
@@ -356,6 +374,19 @@ func hasErrors(ds []Diagnostic) bool {
 		}
 	}
 	return false
+}
+
+// newInterpInput is newInterp plus the global `input` (JSON, null if empty).
+func (e *Engine) newInterpInput(ctx context.Context, file string, input json.RawMessage) (*js.Interp, error) {
+	var v any
+	if len(input) > 0 {
+		if err := json.Unmarshal(input, &v); err != nil {
+			return nil, fmt.Errorf("--input is not valid JSON: %v", err)
+		}
+	}
+	it := e.newInterp(ctx, file)
+	it.Define("input", js.FromGo(v))
+	return it, nil
 }
 
 func (e *Engine) newInterp(ctx context.Context, file string) *js.Interp {

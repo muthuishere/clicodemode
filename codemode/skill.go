@@ -49,5 +49,6 @@ func Skill(reg *Registry, name string) string {
 		fmt.Fprintf(&b, "```sh\n%s check prog.js && %s run prog.js --json\n```\n", code, code)
 	}
 	fmt.Fprintf(&b, "\nDescribe an operation before using it: `%s describe <op> --json`. Exit codes: 0 ok, 1 failed, 2 errors (nothing ran).\n", code)
+	fmt.Fprintf(&b, "\n## From Claude Code Code Mode or other agent code\n\nSend one program per task, not one command per step: `%s run - --input '<json>' --json` with the program on stdin. The program reads `input`; the result is `value` in the JSON. Your own code joins results across different CLIs.\n", code)
 	return b.String()
 }

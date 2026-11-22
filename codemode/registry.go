@@ -137,6 +137,10 @@ type LanguageInfo struct {
 // SpecVersion is the version of the capabilities document format.
 const SpecVersion = "codemode/v0"
 
+// LibraryVersion is this library's release, printed by `code version` so a
+// runner can tell which build is on its PATH.
+const LibraryVersion = "0.5.0"
+
 // Capabilities returns the full capability document with a fingerprint that
 // changes whenever any operation's public contract changes.
 func (r *Registry) Capabilities() Capabilities {
@@ -170,7 +174,7 @@ var languageInfo = LanguageInfo{
 		"pmap bounded-concurrency parallel map",
 	},
 	Unsupported: []string{"class", "new", "this", "generators", "switch", "delete", "regex", "dynamic import()", "eval", "npm", "Node/browser APIs"},
-	Globals: []string{"call(name, args)", "ops.<op path>(args)", "print", "console.log", "JSON", "Math",
+	Globals: []string{"call(name, args)", "input (from --input JSON, else null)", "ops.<op path>(args)", "print", "console.log", "JSON", "Math",
 		"Object.keys/values/entries/fromEntries/assign", "Array.isArray/from", "String", "Number", "Boolean",
 		"parseInt", "parseFloat", "isNaN", "sleep(ms)", "stream(array)", "pmap(items, fn, {concurrency})",
 		"exec(argv, opts) (host policy)", "execStream(argv, opts) (host policy)", "shell(cmd) (separately authorized)", "Error/TypeError/RangeError(msg)", "Promise"},

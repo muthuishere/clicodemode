@@ -92,6 +92,29 @@ batch adapter (proposal parked for owner approval) and WFNexus plan validation.
 
 Try it: `go run ./cmd/democli code help`.
 
+## With Claude Code's Code Mode
+
+[Claude Code's Code Mode](https://code.claude.com/docs/en/code-mode) puts the
+code loop in the **agent**: one JavaScript snippet makes many tool calls, so
+model round trips drop. When that snippet calls a CLI many times
+(`` $`mycli ...` `` x 25) it still starts 25 processes. CLI CodeMode puts the
+loop in the **CLI**. The two compose:
+
+```js
+// inside Claude Code Code Mode: one process per CLI, not one per command
+const r = await $`mycli code run - --input ${JSON.stringify({ ids })} --json < prog.js`.json()
+```
+
+| per call, same small operation (demo CLI, ~4 ms startup) | time |
+|---|---|
+| one process per call (`` $`mycli ...` ``) | 4.68 ms |
+| one `code_run` call to a persistent `democli-mcp` session | **0.12 ms** |
+| 25 parallel calls: 25 processes vs one `code run` | 85 ms vs **59 ms** |
+
+Real CLIs that read config, authenticate or open connections on start gain
+more; that is not measured here. Check the build on a runner's `PATH` with
+`mycli code version`.
+
 ## Performance
 
 Same work, fresh process each run, medians, Apple Silicon:

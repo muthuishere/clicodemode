@@ -47,8 +47,10 @@ Usage:
   %[1]s docs                           language and API reference for writing programs
   %[1]s check <program.js|->           parse and validate; nothing runs
   %[1]s compile <program.js|->         check, then print the compiled plan and cache key
-  %[1]s run <program.js|-> [--json]    run a program; prints its result
+  %[1]s run <program.js|-> [--json] [--input JSON]
+                                       run a program (--input becomes the global "input")
   %[1]s eval <expression> [--json]     evaluate one expression
+  %[1]s version                        CLI, library and spec version
   %[1]s skill                          print a SKILL.md for agents driving this CLI
   %[1]s run-step <module.js>#<export> [--input JSON] [--outcomes a,b]
                                        call one exported function with {input, steps:{}}
@@ -77,13 +79,13 @@ func (c *CLI) Main(ctx context.Context, args []string) int {
 		switch {
 		case a == "--json":
 			jsonOut = true
-		case sub == "run-step" && a == "--input":
+		case (sub == "run-step" || sub == "run" || sub == "eval") && a == "--input":
 			if i+1 >= len(rest) {
 				return c.usageErr("--input needs a JSON value")
 			}
 			i++
 			input, hasInput = rest[i], true
-		case sub == "run-step" && strings.HasPrefix(a, "--input="):
+		case (sub == "run-step" || sub == "run" || sub == "eval") && strings.HasPrefix(a, "--input="):
 			input, hasInput = strings.TrimPrefix(a, "--input="), true
 		case sub == "run-step" && (a == "--outcomes" || strings.HasPrefix(a, "--outcomes=")):
 			v := strings.TrimPrefix(a, "--outcomes=")
@@ -159,7 +161,7 @@ func (c *CLI) Main(ctx context.Context, args []string) int {
 		if err != nil {
 			return c.usageErr(err.Error())
 		}
-		return c.report(c.Engine.Run(ctx, src, file), jsonOut)
+		return c.report(c.Engine.RunWithInput(ctx, src, file, inputArg(input, hasInput)), jsonOut)
 	case "eval":
 		if len(pos) == 0 {
 			return c.usageErr("eval needs an expression")
@@ -172,7 +174,10 @@ func (c *CLI) Main(ctx context.Context, args []string) int {
 			}
 			expr = string(b)
 		}
-		return c.report(c.Engine.Eval(ctx, expr), jsonOut)
+		return c.report(c.Engine.EvalWithInput(ctx, expr, inputArg(input, hasInput)), jsonOut)
+	case "version":
+		fmt.Fprintf(c.Stdout, "%s (clicodemode %s, spec %s)\n", c.Engine.Registry.Version, LibraryVersion, SpecVersion)
+		return 0
 	case "skill":
 		fmt.Fprint(c.Stdout, Skill(c.Engine.Registry, c.Name))
 		return 0
@@ -443,4 +448,12 @@ func stepContextFromEnv(input string, explicit bool) (string, error) {
 	}
 	b, err := json.Marshal(ctx)
 	return string(b), err
+}
+
+// inputArg turns the --input flag into the program's `input` JSON.
+func inputArg(input string, has bool) json.RawMessage {
+	if !has {
+		return nil
+	}
+	return json.RawMessage(input)
 }

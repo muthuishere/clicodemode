@@ -24,6 +24,8 @@ and returns only the result.
 | CLI-6 | `check --json` prints a JSON array of diagnostics (`[]` when clean). |
 | CLI-7 | `describe` of an unknown operation exits 2 and suggests the closest name when one is within edit distance 3. |
 | CLI-8 | `run-step <mod.js>#<export> [--input JSON]` calls the export with `{input, steps: {}}`, prints its JSON result. Exit 0 ok, 1 failure, 2 usage. With `--outcomes a,b,...` the step MUST return `{outcome}` from that list and the process exits `10 + index`; it MUST NOT exit 0. |
+| CLI-10 | `run` and `eval` accept `--input JSON` (or `--input=JSON`); the value is the program's global `input` (null when absent). Invalid JSON exits 2 and runs nothing. This is how an agent's own code mode passes data in. |
+| CLI-11 | `version` prints `<cli version> (clicodemode <library version>, spec <spec version>)`, so a runner can verify which build is on its PATH. |
 | CLI-9 | Program output from `print`/`console.log` goes to the engine's stdout writer, never mixed into `--json` result framing by the library itself. |
 
 ## 3. Capabilities document
@@ -94,7 +96,7 @@ and returns only the result.
 | ID | Requirement |
 |---|---|
 | MCP-1 | The core packages MUST NOT import `adapters/mcp`. |
-| MCP-2 | It serves JSON-RPC 2.0 over stdio (protocol 2025-06-18): `initialize`, `ping`, `tools/list`, `tools/call`, `notifications/cancelled`; tools `code_capabilities code_describe code_check code_run code_docs`. |
+| MCP-2 | It serves JSON-RPC 2.0 over stdio (protocol 2025-06-18): `initialize`, `ping`, `tools/list`, `tools/call`, `notifications/cancelled`; tools `code_capabilities code_describe code_check code_run code_docs`; `code_run` takes an optional `input` (any JSON). A long-lived adapter process lets an agent call `code_run` repeatedly with no new process per call. |
 
 ## 10. Security statement
 

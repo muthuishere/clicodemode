@@ -116,7 +116,8 @@ gap its owner is tracking); CodeMode catches them at export time.
   directory, so `./steps/health.js` resolves. A single YAML file fails with
   `stat ./steps/health.js`.
 - Put the CLI in a directory on the runner's step `PATH` (`~/.local/bin`
-  worked).
+  worked), and check which build the runner sees with `<cli> code version`:
+  a stale copy earlier on `PATH` silently runs old code.
 - WFNexus gives a `run` step nothing but its `run:` text: step `env:` values are
   literal and template functions are refused. Plain value refs in `run:`
   (`{{ .Input }}`, `{{ .Steps.<id>.stdout }}`, `{{ .Item }}`) are rewritten by

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -229,5 +230,23 @@ func TestServeStopsOnContext(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Serve ignored ctx")
+	}
+}
+
+// One long-lived server answers many code_run calls, each with its own
+// input: the pattern an agent's code mode uses to avoid a process per call.
+func TestCodeRunRepeatedWithInput(t *testing.T) {
+	c := newClient(t, Options{})
+	for i := 1; i <= 50; i++ {
+		r := c.roundTrip(callLine(i, "code_run", map[string]any{
+			"program": `(await ops.text.upper({text: input.word})) + input.n`,
+			"input":   map[string]any{"word": "w", "n": i},
+		}))
+		if r.Error != nil || r.Result["isError"] != nil {
+			t.Fatalf("call %d: %+v", i, r)
+		}
+		if got := r.Result["structuredContent"].(map[string]any)["value"]; got != "W"+strconv.Itoa(i) {
+			t.Fatalf("call %d: value %v", i, got)
+		}
 	}
 }
