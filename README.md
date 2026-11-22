@@ -9,7 +9,7 @@ No Node.js, V8, Goja, cgo or external interpreter. No mandatory MCP or LLM.
 Optional MCP server (stdio) in `adapters/mcp`: see [docs/MCP.md](docs/MCP.md).
 
 ```sh
-go get github.com/muthuishere/clicodemode@latest
+go get github.com/muthuishere/clicodemode@latest && go mod tidy
 ```
 
 ```go
@@ -91,6 +91,26 @@ Optional MCP server (`adapters/mcp`).
 batch adapter (proposal parked for owner approval) and WFNexus plan validation.
 
 Try it: `go run ./cmd/democli code help`.
+
+## Performance: YAML vs Node.js
+
+12.2 MB, 20,000 Kubernetes-style documents, Apple Silicon, medians
+(`js/yaml_bench_test.go`; Node 24, js-yaml 4.1.0, yaml 2.6.1):
+
+| parser | time |
+|---|---|
+| Node `js-yaml` `loadAll` (V8 JIT, warmed) | 213 ms |
+| Go `yaml.v3` raw decode | 480 ms |
+| **CodeMode** `stream(...).yaml().count()` (end to end, ordered JS objects) | 555 ms |
+| Node `yaml` `parseAllDocuments().toJS()` | 2,924 ms |
+
+Small input, fresh process each run (what a CLI call actually costs):
+Node + js-yaml **30 ms**, `democli code run` with `.yaml()` **4 ms**.
+
+So: for one-shot CLI and agent calls CodeMode is ~7x faster because there is
+no runtime to boot. On big files js-yaml's JIT parser is ~2.6x faster than
+Go's yaml.v3, which is our bottleneck (the CodeMode layer adds ~15%), and
+CodeMode is ~5x faster than the `yaml` package.
 
 ## Security
 
