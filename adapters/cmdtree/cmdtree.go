@@ -69,6 +69,8 @@ type config struct {
 	auth        string
 	examples    []codemode.Example
 	maxOutput   int
+	jsonFlag    string // set by WithJSONResult
+	jsonResult  bool
 }
 
 // WithFlagSet declares the command's flags: each becomes an optional input
@@ -91,6 +93,16 @@ func WithExamples(ex ...codemode.Example) Option {
 	return func(c *config) { c.examples = append(c.examples, ex...) }
 }
 
+// WithJSONResult makes the operation JSON-first, which is what programs want:
+// flag (e.g. "--json"; empty if the command always prints JSON) is appended
+// to every call, a successful call returns the parsed JSON value itself (an
+// object or array, not a {stdout: "..."} wrapper; non-JSON stdout comes back
+// as a trimmed string), and a failing call rejects with its exit code and the
+// tail of stderr, so programs use try/catch instead of checking ok.
+func WithJSONResult(flag string) Option {
+	return func(c *config) { c.jsonFlag, c.jsonResult = flag, true }
+}
+
 // WithMaxOutput caps captured stdout and stderr each (default 8 MiB).
 func WithMaxOutput(n int) Option { return func(c *config) { c.maxOutput = n } }
 
@@ -108,11 +120,15 @@ func FromRunner(name, desc string, run Runner, opts ...Option) codemode.Operatio
 		o(&cfg)
 	}
 	flags := flagSpecs(cfg.fs)
+	outSchema := outputSchema
+	if cfg.jsonResult {
+		outSchema = nil // the command's own JSON; describe it with an Example
+	}
 	return codemode.Operation{
 		Name:          name,
 		Description:   desc,
 		InputSchema:   inputSchema(flags),
-		OutputSchema:  outputSchema,
+		OutputSchema:  outSchema,
 		SideEffects:   cfg.sideEffects,
 		Idempotent:    cfg.idempotent,
 		Authorization: cfg.auth,
@@ -122,7 +138,27 @@ func FromRunner(name, desc string, run Runner, opts ...Option) codemode.Operatio
 			if err != nil {
 				return nil, err
 			}
-			return invoke(ctx, run, argv, cfg.maxOutput), nil
+			if cfg.jsonResult && cfg.jsonFlag != "" {
+				argv = append([]string{cfg.jsonFlag}, argv...) // flags before positionals, as flag.Parse needs
+			}
+			res := invoke(ctx, run, argv, cfg.maxOutput)
+			if !cfg.jsonResult {
+				return res, nil
+			}
+			if res["ok"] != true {
+				tail := strings.TrimSpace(res["stderr"].(string))
+				if len(tail) > 500 {
+					tail = "..." + tail[len(tail)-500:]
+				}
+				if tail == "" {
+					tail, _ = res["error"].(string)
+				}
+				return nil, fmt.Errorf("exit %v: %s", res["exit"], tail)
+			}
+			if v, ok := res["json"]; ok {
+				return v, nil
+			}
+			return strings.TrimSpace(res["stdout"].(string)), nil
 		},
 	}
 }

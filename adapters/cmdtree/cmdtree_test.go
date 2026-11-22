@@ -167,3 +167,35 @@ func TestOutputCap(t *testing.T) {
 		t.Fatalf("bad %v", m)
 	}
 }
+
+func TestJSONResultReturnsObjectsAndThrowsOnFailure(t *testing.T) {
+	list := func(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+		fs := flag.NewFlagSet("list", flag.ContinueOnError)
+		asJSON := fs.Bool("json", false, "")
+		fs.SetOutput(stderr)
+		if err := fs.Parse(args); err != nil {
+			return err
+		}
+		if fs.NArg() > 0 && fs.Arg(0) == "boom" {
+			fmt.Fprintln(stderr, "no such thing: boom")
+			return errors.New("failed")
+		}
+		if !*asJSON {
+			fmt.Fprintln(stdout, "a\nb")
+			return nil
+		}
+		fmt.Fprintln(stdout, `[{"name":"a"},{"name":"b"}]`)
+		return nil
+	}
+	reg := codemode.NewRegistry("t")
+	reg.MustRegister(FromRunner("items.list", "list", list, WithJSONResult("--json")))
+	e := codemode.NewEngine(reg)
+	r := e.Run(context.Background(), `const items = await ops.items.list(); items.map(i => i.name).join(",") + ":" + Array.isArray(items)`, "p.js")
+	if !r.OK || r.Value != "a,b:true" {
+		t.Fatalf("want the parsed array directly, got %+v", r)
+	}
+	r = e.Run(context.Background(), `let m; try { await ops.items.list({args: ["boom"]}) } catch (e) { m = e.message } m`, "p.js")
+	if !r.OK || !strings.Contains(r.Value.(string), "exit 1: no such thing: boom") {
+		t.Fatalf("want a rejection with the stderr tail, got %+v", r)
+	}
+}
