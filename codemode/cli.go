@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 )
@@ -182,7 +183,7 @@ func (c *CLI) Main(ctx context.Context, args []string) int {
 		if !hasInput {
 			input = "null"
 		}
-		return c.runStep(ctx, pos[0], input, outcomes)
+		return c.runStep(ctx, pos[0], input, hasInput, outcomes)
 	}
 	return c.usageErr(fmt.Sprintf("unknown subcommand %q", sub))
 }
@@ -205,7 +206,7 @@ var identRe = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]*$`)
 // runStep exits 0 on success. With outcomes, the step must return
 // {outcome: outcomes[i]} and exits js.OutcomeExitBase+i, which the exported
 // WFNexus YAML declares in exit-codes so the guard <id>.outcome works there.
-func (c *CLI) runStep(ctx context.Context, target, input string, outcomes []string) int {
+func (c *CLI) runStep(ctx context.Context, target, input string, explicitInput bool, outcomes []string) int {
 	mod, export, ok := strings.Cut(target, "#")
 	if !ok || mod == "" || export == "" {
 		return c.usageErr("run-step target must be <module.js>#<export>")
@@ -229,8 +230,12 @@ func (c *CLI) runStep(ctx context.Context, target, input string, outcomes []stri
 	if export == "default" {
 		imp = "__step"
 	}
-	src := fmt.Sprintf("import %s from %q\nexport default async function () { return await __step({ input: %s, steps: {} }) }\n",
-		imp, "./"+filepath.Base(mod), input)
+	ctxJSON, err := stepContextFromEnv(input, explicitInput)
+	if err != nil {
+		return c.usageErr(err.Error())
+	}
+	src := fmt.Sprintf("import %s from %q\nexport default async function () { return await __step(%s) }\n",
+		imp, "./"+filepath.Base(mod), ctxJSON)
 	entry := filepath.Join(filepath.Dir(mod), "__run_step__.js")
 	r := c.Engine.Run(ctx, src, entry)
 	if !r.OK {
@@ -390,4 +395,52 @@ func compact(raw json.RawMessage) string {
 	}
 	b, _ := json.Marshal(v)
 	return string(b)
+}
+
+// stepContextFromEnv builds the JSON for {input, steps, item, index}. A plan
+// exported to WFNexus passes them as environment variables (see
+// js.StepEnvName): CODEMODE_INPUT, CODEMODE_STEP_IDS (id=VAR,...),
+// CODEMODE_STEP_<ID> (that step's printed result), CODEMODE_ITEM and
+// CODEMODE_INDEX. Values that are not JSON are passed as strings.
+func stepContextFromEnv(input string, explicit bool) (string, error) {
+	asJSON := func(s string) json.RawMessage {
+		s = strings.TrimSpace(s)
+		if s != "" && json.Valid([]byte(s)) {
+			return json.RawMessage(s)
+		}
+		b, _ := json.Marshal(s)
+		return b
+	}
+	ctx := map[string]any{"input": json.RawMessage(input), "steps": map[string]json.RawMessage{}}
+	if !explicit {
+		if v, ok := os.LookupEnv("CODEMODE_INPUT"); ok && strings.TrimSpace(v) != "" && strings.TrimSpace(v) != "<no value>" {
+			if !json.Valid([]byte(v)) {
+				return "", fmt.Errorf("CODEMODE_INPUT is not valid JSON")
+			}
+			ctx["input"] = json.RawMessage(v)
+		}
+	}
+	steps := map[string]json.RawMessage{}
+	if ids := os.Getenv("CODEMODE_STEP_IDS"); ids != "" {
+		for _, pair := range strings.Split(ids, ",") {
+			id, name, ok := strings.Cut(pair, "=")
+			if !ok {
+				continue
+			}
+			if v, ok := os.LookupEnv(name); ok && strings.TrimSpace(v) != "" { // a step that never ran renders empty
+				steps[id] = asJSON(v)
+			}
+		}
+	}
+	ctx["steps"] = steps
+	if v, ok := os.LookupEnv("CODEMODE_ITEM"); ok {
+		ctx["item"] = asJSON(v)
+	}
+	if v, ok := os.LookupEnv("CODEMODE_INDEX"); ok {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			ctx["index"] = n
+		}
+	}
+	b, err := json.Marshal(ctx)
+	return string(b), err
 }

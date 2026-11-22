@@ -45,7 +45,7 @@ and returns only the result.
 | OP-3 | A literal operation name that is not registered is a `check` error (with did-you-mean); a computed one fails at run time. Either way the handler never runs. |
 | OP-4 | `Policy.Allow` is consulted before every call; a denial rejects the call. |
 | OP-5 | Handler errors reject the promise and are catchable; a handler panic MUST become a rejection, not crash the host. |
-| OP-6 | Operations in flight are bounded by `Limits.MaxConcurrency` (default 8). |
+| OP-6 | Operations in flight are bounded by `Limits.MaxConcurrency` (default 32). |
 
 ## 5. Language
 
@@ -62,7 +62,7 @@ and returns only the result.
 
 | ID | Requirement |
 |---|---|
-| LIM-1 | Each run is bounded by `MaxSteps` (default 10M), `MaxCallDepth` (512), `MaxConcurrency` (8) and optional `Timeout`, plus the caller's context. |
+| LIM-1 | Each run is bounded by `MaxSteps` (default 10M), `MaxCallDepth` (512), `MaxConcurrency` (32) and optional `Timeout`, plus the caller's context. |
 | LIM-2 | Exceeding a limit or cancellation stops the whole run and MUST NOT be catchable, including when it surfaces as a rejection inside async code, `sleep`, an operation or `.catch`. |
 | LIM-3 | On cancellation, pending operations receive a cancelled context, child processes are killed and streams closed. |
 
@@ -86,7 +86,7 @@ and returns only the result.
 | WF-2 | `.run(input)` runs steps by DAG (sequential when no step has `needs`), up to `maxParallel` (default 4); a failure stops dependents unless `continueOnError`. |
 | WF-3 | Guards `{path, equals|exists}` resolve WFNexus-style: longest step-id prefix, JSON-byte equality, unresolved = false (step skipped with a reason). |
 | WF-4 | `while`/`until` require `maxIterations` (1..999); exhausting it fails the step. |
-| WF-5 | `.toYAML()` emits only fields WFNexus accepts; steps run `<cli> code run-step <module>#<export>`. Guards MUST read only `<id>.ok`, `<id>.exitCode`, `<id>.outcome` or `input.*`; anything else is an export error. `outcomes` are emitted as `exit-codes` `10 + index`. |
+| WF-5 | `.toYAML()` emits only fields WFNexus accepts; steps run `<cli> code run-step <module>#<export>`. Guards MUST read only `<id>.ok`, `<id>.exitCode`, `<id>.outcome` or `input.*`; anything else is an export error. `outcomes` are emitted as `exit-codes` `10 + index`. Step context reaches `run-step` as inline assignments in the `run:` line (`CODEMODE_INPUT`, `CODEMODE_STEP_<ID>` per upstream step from `{{ .Steps.<id>.stdout }}`, `CODEMODE_STEP_IDS`, and `CODEMODE_ITEM`/`CODEMODE_INDEX` for foreach), because WFNexus passes a run step only its `run:` text. An explicit `--input` wins over `CODEMODE_INPUT`. |
 | WF-6 | Declarative plans require step functions imported from modules; inline closures are an export error. |
 
 ## 9. Optional MCP adapter

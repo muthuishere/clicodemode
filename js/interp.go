@@ -142,7 +142,7 @@ func New(ctx context.Context, cfg Config) *Interp {
 		cfg.Limits.MaxCallDepth = 512
 	}
 	if cfg.Limits.MaxConcurrency == 0 {
-		cfg.Limits.MaxConcurrency = 8
+		cfg.Limits.MaxConcurrency = 32 // operations are mostly I/O; hosts lower it for heavy ones
 	}
 	if cfg.Stdout == nil {
 		cfg.Stdout = io.Discard

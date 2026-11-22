@@ -1,0 +1,21 @@
+name: health-check
+steps:
+  - id: inspect
+    retry:
+      max_attempts: 3
+      backoff_sec: 2
+    timeout_sec: 30
+    run: "CODEMODE_INPUT=\"{{ .Input }}\" democli code run-step ./steps/health.js#inspect"
+  - id: wait-ready
+    needs: [inspect]
+    until:
+      - path: wait-ready.outcome
+        equals: "ready"
+    max_iterations: 5
+    exit-codes:
+      10: ready
+      11: waiting
+    run: "CODEMODE_INPUT=\"{{ .Input }}\" CODEMODE_STEP_INSPECT=\"{{ .Steps.inspect.stdout }}\" CODEMODE_STEP_IDS=inspect=CODEMODE_STEP_INSPECT democli code run-step ./steps/health.js#poll --outcomes ready,waiting"
+  - id: report
+    needs: [inspect, wait-ready]
+    run: "CODEMODE_INPUT=\"{{ .Input }}\" CODEMODE_STEP_INSPECT=\"{{ .Steps.inspect.stdout }}\" CODEMODE_STEP_WAIT_READY=\"{{ .Steps.wait-ready.last.stdout }}\" CODEMODE_STEP_IDS=inspect=CODEMODE_STEP_INSPECT,wait-ready=CODEMODE_STEP_WAIT_READY democli code run-step ./steps/health.js#report"

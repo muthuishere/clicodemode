@@ -84,7 +84,7 @@ goroutine; a single interpreter lock means only one runs JS at a time. JS code
 runs to completion between `await`s, exactly like JS. `await` (always, even on
 plain values) and host operations release the lock, so operation I/O really
 overlaps: `Promise.all` over four 300 ms operations takes ~300 ms. Operations
-in flight are bounded by `Limits.MaxConcurrency` (default 8).
+in flight are bounded by `Limits.MaxConcurrency` (default 32).
 
 Deviation from browsers/Node: relative ordering of callbacks between
 *independent* promises is unspecified (there is no microtask queue). Code that

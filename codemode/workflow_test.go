@@ -3,6 +3,7 @@ package codemode
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -360,7 +361,7 @@ steps:
       max_attempts: 3
       backoff_sec: 2
     timeout_sec: 30
-    run: democli code run-step ./steps/health.js#inspect
+    run: "CODEMODE_INPUT=\"{{ .Input }}\" democli code run-step ./steps/health.js#inspect"
   - id: report
     needs: [inspect]
     when:
@@ -369,12 +370,12 @@ steps:
       - path: input.host
         exists: true
     continue-on-error: true
-    run: democli code run-step ./steps/health.js#report
+    run: "CODEMODE_INPUT=\"{{ .Input }}\" CODEMODE_STEP_INSPECT=\"{{ .Steps.inspect.stdout }}\" CODEMODE_STEP_IDS=inspect=CODEMODE_STEP_INSPECT democli code run-step ./steps/health.js#report"
   - id: each
     needs: [inspect]
     foreach: ["a","b"]
     parallel: 2
-    run: democli code run-step ./steps/health.js#each
+    run: "CODEMODE_INPUT=\"{{ .Input }}\" CODEMODE_STEP_INSPECT=\"{{ .Steps.inspect.stdout }}\" CODEMODE_STEP_IDS=inspect=CODEMODE_STEP_INSPECT CODEMODE_ITEM=\"{{ .Item }}\" CODEMODE_INDEX=\"{{ .Index }}\" democli code run-step ./steps/health.js#each"
   - id: poll
     needs: [report]
     until:
@@ -384,7 +385,7 @@ steps:
     exit-codes:
       10: ready
       11: waiting
-    run: "democli code run-step ./lib.js#default --outcomes ready,waiting"
+    run: "CODEMODE_INPUT=\"{{ .Input }}\" CODEMODE_STEP_INSPECT=\"{{ .Steps.inspect.stdout }}\" CODEMODE_STEP_REPORT=\"{{ .Steps.report.stdout }}\" CODEMODE_STEP_IDS=inspect=CODEMODE_STEP_INSPECT,report=CODEMODE_STEP_REPORT democli code run-step ./lib.js#default --outcomes ready,waiting"
 `
 
 func TestWorkflowYAMLGolden(t *testing.T) {
@@ -411,5 +412,40 @@ export function boom() { throw Error("x") }`), 0o644)
 		if got != want {
 			t.Errorf("%s: exit %d, want %d (%s)", export, got, want, errb.String())
 		}
+	}
+}
+
+// In WFNexus a run step only sees its run: line, so the exporter passes ctx
+// as inline assignments that the engine fills from ${WFX_DATA_n}. This test
+// sets those variables the way WFNexus does (raw stdout with a trailing
+// newline, a step that never ran rendering empty) and checks run-step
+// rebuilds {input, steps, item, index}.
+func TestRunStepRebuildsContextFromWFNexusEnv(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "s.js"), []byte(`export function report(ctx) {
+  return {os: ctx.steps.inspect.os, host: ctx.input.host, skipped: "skipped" in ctx.steps, item: ctx.item, index: ctx.index}
+}`), 0o644)
+	t.Setenv("CODEMODE_INPUT", `{"host":"h1"}`)
+	t.Setenv("CODEMODE_STEP_INSPECT", "{\n  \"ok\": true,\n  \"os\": \"darwin\"\n}\n")
+	t.Setenv("CODEMODE_STEP_SKIPPED", "")
+	t.Setenv("CODEMODE_STEP_IDS", "inspect=CODEMODE_STEP_INSPECT,skipped=CODEMODE_STEP_SKIPPED")
+	t.Setenv("CODEMODE_ITEM", `{"name":"a"}`)
+	t.Setenv("CODEMODE_INDEX", "2")
+	code, out, errOut := cli(t, "", "run-step", filepath.Join(dir, "s.js")+"#report")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	var got map[string]any
+	json.Unmarshal([]byte(out), &got)
+	want := map[string]any{"os": "darwin", "host": "h1", "skipped": false, "item": map[string]any{"name": "a"}, "index": 2.0}
+	for k, v := range want {
+		if b1, _ := json.Marshal(got[k]); string(b1) != func() string { b2, _ := json.Marshal(v); return string(b2) }() {
+			t.Errorf("%s = %v, want %v (out %s)", k, got[k], v, out)
+		}
+	}
+	// an explicit --input wins over CODEMODE_INPUT
+	_, out, _ = cli(t, "", "run-step", filepath.Join(dir, "s.js")+"#report", "--input", `{"host":"cli"}`)
+	if !strings.Contains(out, `"host": "cli"`) {
+		t.Fatalf("explicit --input ignored: %s", out)
 	}
 }

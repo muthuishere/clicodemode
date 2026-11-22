@@ -108,3 +108,21 @@ returns `{outcome}`; `toYAML` emits `exit-codes` (10 + index) and `run-step
 --outcomes` exits with that code. The same guard works in-process, so both
 runtimes agree. Dry runs do not catch unresolvable guard paths (a WFNexus
 gap its owner is tracking); CodeMode catches them at export time.
+
+### Running an exported plan in WFNexus (verified with real runs, 2026-11-22)
+
+- Ship it as a **workflow directory**: `workflow.yaml` plus `steps/*.js`.
+  Sidecar files are staged into the run workspace, which is the working
+  directory, so `./steps/health.js` resolves. A single YAML file fails with
+  `stat ./steps/health.js`.
+- Put the CLI in a directory on the runner's step `PATH` (`~/.local/bin`
+  worked).
+- WFNexus gives a `run` step nothing but its `run:` text: step `env:` values are
+  literal and template functions are refused. Plain value refs in `run:`
+  (`{{ .Input }}`, `{{ .Steps.<id>.stdout }}`, `{{ .Item }}`) are rewritten by
+  the engine into safe `${WFX_DATA_n}` expansions, so the exporter passes the
+  step context as inline assignments and `run-step` rebuilds
+  `{input, steps, item, index}`. A step that never ran renders empty and is
+  left out of `steps`.
+- Verified: exit 10 gives `outcome=ready` and the loop finishes; 5 waitings
+  fail the step ("until condition not met after 5 iterations"); retry works.

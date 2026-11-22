@@ -1077,10 +1077,61 @@ func writeGuard(b *strings.Builder, ind string, g guard) {
 }
 
 // toYAML emits WFNexus workflow YAML using only fields WFNexus accepts.
+// upstream returns the steps whose outputs step i can read: every earlier
+// step in sequential mode, otherwise the transitive closure of its needs.
+func (w *wf) upstream(i int) []*wfStep {
+	if !w.hasNeeds() {
+		return w.steps[:i]
+	}
+	seen := map[int]bool{}
+	var walk func(j int)
+	walk = func(j int) {
+		for _, n := range w.steps[j].needs {
+			k := w.index[n]
+			if !seen[k] {
+				seen[k] = true
+				walk(k)
+			}
+		}
+	}
+	walk(i)
+	var out []*wfStep
+	for k, s := range w.steps {
+		if seen[k] {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// StepEnvName is the environment variable that carries a step's output into
+// `run-step` when a plan runs in WFNexus: CODEMODE_STEP_<ID>, upper-cased,
+// non-alphanumerics as "_".
+func StepEnvName(id string) string {
+	var b strings.Builder
+	b.WriteString("CODEMODE_STEP_")
+	for _, r := range strings.ToUpper(id) {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
 func (w *wf) toYAML() (Value, error) {
+	envNames := map[string]string{}
+	for _, s := range w.steps {
+		n := StepEnvName(s.id)
+		if other, dup := envNames[n]; dup {
+			return nil, wfErr(fmt.Sprintf("steps %q and %q map to the same variable %s; rename one", other, s.id, n))
+		}
+		envNames[n] = s.id
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "name: %s\nsteps:\n", yamlStr(w.name))
-	for _, s := range w.steps {
+	for si, s := range w.steps {
 		ref, err := w.ref(s)
 		if err != nil {
 			return nil, err
@@ -1143,7 +1194,28 @@ func (w *wf) toYAML() (Value, error) {
 		if s.continueOnError {
 			b.WriteString("    continue-on-error: true\n")
 		}
-		runLine := fmt.Sprintf("%s code run-step %s", w.cfg.CLI, ref)
+		// WFNexus hands a run step only its run: text. Plain value refs there
+		// ({{ .Input }}, {{ .Steps.<id>.stdout }}, {{ .Item }}) are rewritten by
+		// the engine into safe ${WFX_DATA_n} expansions, so pass ctx as inline
+		// assignments; run-step rebuilds {input, steps, item, index}. (Step
+		// env: values are literal and template functions are refused there.)
+		assign := []string{`CODEMODE_INPUT="{{ .Input }}"`}
+		var ids []string
+		for _, u := range w.upstream(si) {
+			path := ".Steps." + u.id + ".stdout"
+			if u.loop != "" {
+				path = ".Steps." + u.id + ".last.stdout"
+			}
+			assign = append(assign, fmt.Sprintf(`%s="{{ %s }}"`, StepEnvName(u.id), path))
+			ids = append(ids, u.id+"="+StepEnvName(u.id))
+		}
+		if len(ids) > 0 {
+			assign = append(assign, "CODEMODE_STEP_IDS="+strings.Join(ids, ","))
+		}
+		if s.loop == "foreach" {
+			assign = append(assign, `CODEMODE_ITEM="{{ .Item }}"`, `CODEMODE_INDEX="{{ .Index }}"`)
+		}
+		runLine := strings.Join(assign, " ") + " " + fmt.Sprintf("%s code run-step %s", w.cfg.CLI, ref)
 		if len(s.outcomes) > 0 {
 			b.WriteString("    exit-codes:\n")
 			for i, o := range s.outcomes {
