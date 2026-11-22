@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLI CodeMode: Code Mode for every CLI</title>
+<meta name="description" content="A pure-Go library a CLI embeds. Agents send one small program to mycli code run instead of calling the CLI 25 times.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23111110'/%3E%3Cpath d='M9 10l-5 6 5 6M23 10l5 6-5 6M18 8l-4 16' stroke='%23fff' stroke-width='2.4' fill='none'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#f4f4f2;--panel:#fff;--ink:#111110;--mute:#5d5d58;--line:#d9d9d4;--mark:#ffe36e;--code:#ebebe7;--good:#0b6b3a}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#111110;--panel:#1a1a18;--ink:#f4f4f2;--mute:#a3a39b;--line:#33332f;--mark:#5a4a00;--code:#222220;--good:#6fd39a}}
+:root[data-theme=dark]{--bg:#111110;--panel:#1a1a18;--ink:#f4f4f2;--mute:#a3a39b;--line:#33332f;--mark:#5a4a00;--code:#222220;--good:#6fd39a}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
+a{color:inherit;text-decoration-color:var(--mute);text-underline-offset:3px}
+a:hover{text-decoration-color:var(--ink)}
+code,pre,.nav,.eyebrow,th{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.wrap{max-width:980px;margin:0 auto;padding:0 20px}
+.skip{position:absolute;left:-999px}.skip:focus{left:8px;top:8px;background:var(--ink);color:var(--bg);padding:6px 10px;z-index:9}
+header{border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 20px;font-size:14px}
+.nav b{font-weight:700}
+.nav .sl{color:var(--mute)}
+.nav a{text-decoration:none}.nav a:hover{text-decoration:underline}
+.nav .grow{flex:1}
+button.theme{font:inherit;background:none;color:inherit;border:1px solid var(--line);padding:3px 10px;cursor:pointer}
+.hero{padding:72px 20px 56px}
+h1{font-size:clamp(34px,6.4vw,64px);line-height:1.08;letter-spacing:-.02em;margin:0 0 22px;font-weight:700}
+mark{background:var(--mark);color:inherit;padding:0 .12em}
+.deck{font-size:clamp(18px,2.4vw,22px);color:var(--mute);max-width:40em;margin:0 0 28px}
+.cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.btn{display:inline-block;background:var(--ink);color:var(--bg);padding:12px 20px;text-decoration:none;font-weight:600}
+.btn.ghost{background:none;color:var(--ink);border:1px solid var(--ink)}
+.install{margin-top:28px}
+pre{background:var(--code);padding:16px 18px;overflow-x:auto;font-size:14px;line-height:1.55;margin:0;border:1px solid var(--line)}
+code{font-size:.92em}
+p code,li code,td code{background:var(--code);padding:1px 5px}
+section{padding:56px 0;border-top:1px solid var(--line)}
+.eyebrow{font-size:13px;color:var(--mute);margin:0 0 10px;letter-spacing:.02em}
+h2{font-size:clamp(26px,4.4vw,40px);line-height:1.15;letter-spacing:-.015em;margin:0 0 14px}
+h3.sub{margin:32px 0 10px}
+.lead{color:var(--mute);max-width:40em;margin:0 0 28px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:15px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12.5px;font-weight:600;color:var(--mute);background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td strong{color:var(--good)}
+.note{font-size:14px;color:var(--mute);margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+.grid>div{background:var(--panel);padding:22px}
+.grid h3{margin:0 0 6px;font-size:18px}
+.grid p{margin:0;color:var(--mute);font-size:15.5px}
+.num{font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--mute)}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0;display:grid;gap:22px}
+.steps li{counter-increment:s;padding-left:46px;position:relative;min-width:0}
+.steps li:before{content:counter(s);position:absolute;left:0;top:0;width:30px;height:30px;border:1px solid var(--ink);text-align:center;font:600 14px/28px ui-monospace,Menlo,monospace}
+.steps h3{margin:0 0 8px;font-size:18px}
+.warn{border-left:4px solid var(--ink);background:var(--panel);padding:22px 24px;max-width:46em}
+.warn p{margin:0 0 10px}.warn p:last-child{margin:0}
+.links{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.links a{display:block;border:1px solid var(--line);background:var(--panel);padding:16px 18px;text-decoration:none;overflow-wrap:anywhere}
+.links a:hover{border-color:var(--ink)}
+.links span{display:block;font-size:13px;color:var(--mute);font-family:ui-monospace,Menlo,monospace}
+footer{border-top:1px solid var(--line);padding:30px 0 60px;color:var(--mute);font-size:14px}
+@media (max-width:560px){.hero{padding:44px 20px 36px}section{padding:40px 0}body{font-size:16px}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<header><div class="wrap nav">
+  <b>CLI CodeMode</b><span class="sl">/</span>
+  <a href="#why">why</a><span class="sl">/</span>
+  <a href="#numbers">numbers</a><span class="sl">/</span>
+  <a href="#start">quick start</a><span class="sl">/</span>
+  <a href="#security">security</a>
+  <span class="grow"></span>
+  <a href="https://github.com/muthuishere/clicodemode">github</a>
+  <button class="theme" id="theme" type="button" aria-label="Toggle light and dark">theme</button>
+</div></header>
+
+<main id="main">
+<div class="wrap hero">
+  <p class="eyebrow">v0.4.0 / MIT / pure Go</p>
+  <h1><mark>Code Mode</mark> for every CLI. One process, not 25.</h1>
+  <p class="deck">A library your CLI embeds. Agents like Claude Code, Codex and Cursor send one small program to <code>mycli code run</code>. It runs inside the CLI, in one process, and returns typed results.</p>
+  <div class="cta">
+    <a class="btn" href="#start">Quick start</a>
+    <a class="btn ghost" href="https://github.com/muthuishere/clicodemode">View on GitHub</a>
+  </div>
+  <div class="install"><pre>go get github.com/muthuishere/clicodemode@latest</pre></div>
+</div>
+
+<section id="why"><div class="wrap">
+  <p class="eyebrow">01 / the idea</p>
+  <h2>Put the code loop in the CLI, not only in the agent.</h2>
+  <p class="lead"><a href="https://code.claude.com/docs/en/code-mode">Claude Code's Code Mode</a> (experimental) puts the loop in the agent: Claude writes one JavaScript snippet that makes many tool calls, so model round trips drop. But when that snippet runs <code>kubectl</code> 25 times, it still starts 25 processes. Each one re-reads config, re-authenticates, re-parses arguments and prints raw text that has to be parsed back. CLI CodeMode moves the loop into the CLI: one <code>kubectl code run</code>, one process, typed operations in-process. The two compose: Claude Code's Code Mode can call <code>kubectl code run -</code> once instead of 25 commands.</p>
+  <div class="tablewrap"><table style="min-width:640px">
+    <thead><tr><th></th><th>Claude Code Code Mode calling kubectl 25 times</th><th>CLI CodeMode: <code>kubectl code run</code> once</th></tr></thead>
+    <tbody>
+    <tr><td>model round trips</td><td>1</td><td>1 (the same)</td></tr>
+    <tr><td>processes</td><td>25</td><td><strong>1</strong></td></tr>
+    <tr><td>CLI startup (config, auth, discovery, TLS)</td><td>paid 25 times</td><td><strong>paid once</strong>; one client reused</td></tr>
+    <tr><td>what crosses the boundary</td><td>25 raw text outputs, parsed back in JS</td><td><strong>typed JSON</strong> from in-process operations</td></tr>
+    <tr><td>argument validation</td><td>none until each command fails</td><td><strong>schema-checked</strong>; <code>code check</code> before running</td></tr>
+    <tr><td>permissions</td><td>per Bash call, matched on command text</td><td><strong>per operation</strong>: side-effect tags + host policy</td></tr>
+    <tr><td>where it works</td><td>Claude Code terminal only (experimental; certain plans and models; not VS Code, Desktop or cloud)</td><td><strong>any agent</strong> (Codex, Cursor, Claude Code, CI), any shell</td></tr>
+    <tr><td>who builds it</td><td>the agent</td><td>the CLI author, once, for every agent</td></tr>
+    </tbody></table></div>
+  <p class="note">Model round trips are equal; this is not a claim to save any. kubectl is the example CLI: it does not ship CLI CodeMode today, and no kubectl timing is published until measured on a real cluster. Startup savings depend on the CLI.</p>
+</div></section>
+
+<section><div class="wrap">
+  <p class="eyebrow">02 / what you get</p>
+  <h2>What the CLI gives an agent.</h2>
+  <div class="grid">
+    <div><span class="num">a</span><h3>Embedded</h3><p>No MCP server, sandbox service, Node or V8 required. A pure-Go library in your binary.</p></div>
+    <div><span class="num">b</span><h3>Self-describing</h3><p><code>code capabilities --json</code>, <code>describe</code>, <code>docs</code> and a generated <code>SKILL.md</code>. One global skill works for every compatible CLI.</p></div>
+    <div><span class="num">c</span><h3>Checked before it runs</h3><p><code>code check</code> returns file:line:col diagnostics and executes nothing.</p></div>
+    <div><span class="num">d</span><h3>Parallel and streaming</h3><p><code>Promise.all</code>, bounded <code>pmap</code>, and streams that kill the process on early stop.</p></div>
+    <div><span class="num">e</span><h3>Wrap, don't rewrite</h3><p>Adapters turn your existing flag sets and commands into operations. Never a second implementation of a verb.</p></div>
+    <div><span class="num">f</span><h3>Workflows as plain JS</h3><p>Export to WFNexus YAML, validated by its own parser and dry run.</p></div>
+  </div>
+</div></section>
+
+<section id="numbers"><div class="wrap">
+  <p class="eyebrow">03 / the numbers</p>
+  <h2>Small, fast to start, honest about compute.</h2>
+  <p class="lead">Same work, fresh process each run, medians, Apple Silicon. Workflows that call operations are fastest because there is no runtime to boot. Tight loops are within about 2x of Node's JIT; heavy compute belongs in a Go operation.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th></th><th>YAML (<code>aos batch</code>)</th><th>CodeMode JS</th><th>Node.js JS</th></tr></thead>
+    <tbody>
+    <tr><td>20-step workflow</td><td>9 ms</td><td><strong>3 ms</strong></td><td>48 ms</td></tr>
+    <tr><td>1M-iteration loop (YAML can't express it)</td><td>n/a</td><td><strong>55 ms</strong></td><td>25 ms</td></tr>
+    </tbody></table></div>
+  <h3 class="sub">Size</h3>
+  <div class="tablewrap"><table style="min-width:420px">
+    <thead><tr><th>stripped binary</th><th>size</th></tr></thead>
+    <tbody>
+    <tr><td>plain Go CLI</td><td>2.5 MB</td></tr>
+    <tr><td>with CodeMode</td><td><strong>4.2 MB (+1.7 MB)</strong></td></tr>
+    <tr><td>optional MCP adapter</td><td>+0.02 MB</td></tr>
+    </tbody></table></div>
+  <p class="note">One dependency: <code>gopkg.in/yaml.v3</code>. No cgo.</p>
+  <h3 class="sub">YAML streams vs Node.js</h3>
+  <p class="note" style="margin-top:0">12.2 MB, 20,000 Kubernetes-style documents. Source: <code>js/yaml_bench_test.go</code>; Node 24, js-yaml 4.1.0, yaml 2.6.1.</p>
+  <div class="tablewrap"><table style="min-width:480px">
+    <thead><tr><th>parser</th><th>time</th></tr></thead>
+    <tbody>
+    <tr><td>Node <code>js-yaml</code> <code>loadAll</code> (V8 JIT, warmed)</td><td>213 ms</td></tr>
+    <tr><td>Go <code>yaml.v3</code> raw decode</td><td>480 ms</td></tr>
+    <tr><td><strong>CodeMode</strong> <code>stream(...).yaml().count()</code>, documents decoded in parallel</td><td><strong>219 ms</strong></td></tr>
+    <tr><td>Node <code>yaml</code> <code>parseAllDocuments().toJS()</code></td><td>2,924 ms</td></tr>
+    </tbody></table></div>
+  <p class="note">Small input, fresh process: Node + js-yaml 30 ms, <code>democli code run</code> with <code>.yaml()</code> 4 ms.</p>
+</div></section>
+
+<section id="start"><div class="wrap">
+  <p class="eyebrow">04 / quick start</p>
+  <h2>Three steps in your CLI.</h2>
+  <ol class="steps">
+    <li><h3>Get it</h3><pre>go get github.com/muthuishere/clicodemode@latest &amp;&amp; go mod tidy</pre></li>
+    <li><h3>Register an operation, mount <code>code</code></h3>
+<pre>reg := codemode.NewRegistry("mycli 1.4.0")
+reg.MustRegister(codemode.Operation{
+    Name:        "health.check",
+    Description: "Report whether this machine is healthy.",
+    InputSchema: json.RawMessage(`{"type":"object","properties":{"verbose":{"type":"boolean"}}}`),
+    SideEffects: codemode.SideEffectNone,
+    Idempotent:  true,
+    Handler: func(ctx context.Context, args map[string]any) (any, error) {
+        return existingHealthCheck(args["verbose"] == true), nil // wrap, don't rewrite
+    },
+})
+os.Exit(codemode.NewCLI(codemode.NewEngine(reg), "mycli code").Main(ctx, os.Args[2:]))</pre></li>
+    <li><h3>Let the agent run one program</h3>
+<pre>mycli code capabilities --json   # what can I do?
+mycli code check prog.js         # diagnostics, nothing runs
+mycli code run prog.js           # run it
+
+// prog.js
+const [h, disk] = await Promise.all([
+  call("health.check", { verbose: true }),
+  ops.disk.usage({ path: "/" }),
+])
+export default { health: h, disk }</pre></li>
+  </ol>
+  <p class="note">Try it without writing code: <code>go run ./cmd/democli code help</code>.</p>
+</div></section>
+
+<section id="security"><div class="wrap">
+  <p class="eyebrow">05 / security</p>
+  <h2>Safe by default. Not a sandbox for hostile code.</h2>
+  <div class="warn">
+    <p>Programs can only reach operations you registered. Exec is denied unless allowlisted, argv is never shell-parsed, child environments are minimal, <code>cwd</code> is confined, and step, time, depth and concurrency limits cannot be caught by the program.</p>
+    <p><strong>But operations run with your CLI's privileges.</strong> Register only what you would let a program do, and gate calls with <code>Policy.Allow</code>. The language is a limited JavaScript subset: no <code>class</code>, <code>switch</code> or regex yet, and unsupported constructs fail at parse time with a clear message.</p>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <p class="eyebrow">06 / read more</p>
+  <h2>Everything is in the repo.</h2>
+  <div class="links">
+    <a href="https://github.com/muthuishere/clicodemode"><span>repo</span>github.com/muthuishere/clicodemode</a>
+    <a href="https://github.com/muthuishere/clicodemode/blob/main/docs/SPEC.md"><span>spec</span>docs/SPEC.md, every requirement tested</a>
+    <a href="https://github.com/muthuishere/clicodemode/blob/main/docs/MCP.md"><span>mcp</span>docs/MCP.md, the optional adapter</a>
+    <a href="https://github.com/muthuishere/clicodemode/blob/main/docs/ARCHITECTURE.md"><span>design</span>docs/ARCHITECTURE.md</a>
+  </div>
+</div></section>
+</main>
+
+<footer><div class="wrap" style="padding:0 20px">CLI CodeMode, MIT licensed. Static page, no tracking, no cookies. Built by <a href="https://github.com/muthuishere">muthuishere</a>.</div></footer>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('theme');
+try{var t=localStorage.getItem('theme');if(t)r.setAttribute('data-theme',t)}catch(e){}
+b.onclick=function(){var cur=r.getAttribute('data-theme');var dark=cur?cur==='dark':matchMedia('(prefers-color-scheme:dark)').matches;
+var n=dark?'light':'dark';r.setAttribute('data-theme',n);try{localStorage.setItem('theme',n)}catch(e){}}})();
+</script>
+</body>
+</html>
