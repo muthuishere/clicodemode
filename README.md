@@ -137,5 +137,6 @@ concurrency, and programs can only reach registered operations. It is **not a
 sandbox for hostile code**: operations run with your CLI's privileges.
 Register only what you would let a program do; use `Policy.Allow` to gate.
 
-Docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
+Docs: [docs/SPEC.md](docs/SPEC.md) (normative, every requirement tested) ·
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) · [code/SKILL.md](code/SKILL.md)

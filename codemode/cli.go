@@ -53,7 +53,8 @@ Usage:
                                        call one exported function with {input, steps:{}}
 
 A program reads '-' from stdin. Exit codes: 0 ok, 1 failed, 2 errors (nothing ran).
-run-step exits 0 ok, 1 on any failure, 2 on usage errors.
+run-step exits 0 ok, 1 on any failure, 2 on usage errors; with --outcomes
+it exits 10+index of the returned outcome and never 0.
 
 Set CODEMODE_CACHE_DIR to a directory to cache compiled plans for check and
 compile (off by default; only plans and diagnostics are stored, never secrets
