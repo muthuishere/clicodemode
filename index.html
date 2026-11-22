@@ -109,7 +109,7 @@ footer{border-top:1px solid var(--line);padding:30px 0 60px;color:var(--mute);fo
     <tr><td>where it works</td><td>Claude Code terminal only (experimental; certain plans and models; not VS Code, Desktop or cloud)</td><td><strong>any agent</strong> (Codex, Cursor, Claude Code, CI), any shell</td></tr>
     <tr><td>who builds it</td><td>the agent</td><td>the CLI author, once, for every agent</td></tr>
     </tbody></table></div>
-  <p class="note">Model round trips are equal; this is not a claim to save any. kubectl is the example CLI: it does not ship CLI CodeMode today, and no kubectl timing is published until measured on a real cluster. Startup savings depend on the CLI.</p>
+  <p class="note">Model round trips are equal; this is not a claim to save any. kubectl is the example CLI: it does not ship CLI CodeMode today, and no kubectl timing is published until measured on a real cluster. Startup savings depend on the CLI. Toy footnote, not a headline: on the demo CLI (4 ms startup, default concurrency 32), 25 parallel operations in one process take 59 ms against 85 ms for 25 parallel processes; a real CLI with a heavier start will differ.</p>
 </div></section>
 
 <section><div class="wrap">
