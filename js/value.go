@@ -738,3 +738,21 @@ func isIdentName(s string) bool {
 	}
 	return true
 }
+
+// Small integers are pre-boxed: converting a float64 to an interface
+// allocates, and loop counters, indexes and remainders are mostly small.
+var smallNums = func() []Value {
+	t := make([]Value, 2048)
+	for i := range t {
+		t[i] = float64(i - 1024)
+	}
+	return t
+}()
+
+// num boxes f, reusing a shared interface for small integers.
+func num(f float64) Value {
+	if f >= -1024 && f < 1024 && f == float64(int(f)) && !(f == 0 && math.Signbit(f)) {
+		return smallNums[int(f)+1024]
+	}
+	return f
+}

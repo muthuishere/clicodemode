@@ -1,5 +1,7 @@
 package js
 
+import "sync/atomic"
+
 // Node is any AST node.
 type Node interface{ P() Pos }
 
@@ -12,11 +14,13 @@ func (b base) P() Pos { return b.pos }
 type (
 	NumberLit struct {
 		base
-		V float64
+		V     float64
+		boxed Value // V pre-converted to an interface once, at parse time
 	}
 	StringLit struct {
 		base
-		V string
+		V     string
+		boxed Value
 	}
 	BoolLit struct {
 		base
@@ -26,7 +30,8 @@ type (
 	UndefLit struct{ base }
 	Ident    struct {
 		base
-		Name string
+		Name  string
+		cache atomic.Pointer[identCache] // inline lookup cache, see Runner.resolve
 	}
 	TemplateLit struct {
 		base
@@ -170,6 +175,9 @@ type (
 		Test   Node
 		Update Node
 		Body   Node
+		// Closures is set by the parser when the body creates a function; only
+		// then does each iteration need its own copy of the let bindings.
+		Closures bool
 	}
 	ForOf struct {
 		base

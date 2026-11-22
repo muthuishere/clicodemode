@@ -92,7 +92,24 @@ batch adapter (proposal parked for owner approval) and WFNexus plan validation.
 
 Try it: `go run ./cmd/democli code help`.
 
-## Performance: YAML vs Node.js
+## Performance
+
+Same work, fresh process each run, medians, Apple Silicon:
+
+| | YAML (`aos batch`) | **CodeMode JS** | Node.js JS |
+|---|---|---|---|
+| 20-step workflow | 9 ms | **3 ms** | 48 ms |
+| 1M-iteration loop (YAML can't express it) | n/a | **55 ms** | 25 ms |
+
+Workflows (steps that call operations) are fastest on CodeMode: no runtime to
+boot. Tight compute loops are within ~2x of Node's JIT; heavy compute belongs
+in a Go operation, which runs at native speed.
+
+Adding CodeMode to a CLI costs **+1.7 MB** (stripped binary: 2.5 MB plain Go
+CLI to 4.2 MB); the optional MCP adapter adds 0.02 MB more. One dependency:
+`gopkg.in/yaml.v3`.
+
+### YAML streams vs Node.js
 
 12.2 MB, 20,000 Kubernetes-style documents, Apple Silicon, medians
 (`js/yaml_bench_test.go`; Node 24, js-yaml 4.1.0, yaml 2.6.1):

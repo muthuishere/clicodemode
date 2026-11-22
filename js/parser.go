@@ -229,7 +229,7 @@ func (p *parser) statement(top bool) (Node, error) {
 			if err != nil {
 				return nil, err
 			}
-			return &VarDecl{base: base{t.pos}, Kind: "function", Decls: []Declarator{{Target: &Ident{base{t.pos}, f.Name}, Init: f}}}, nil
+			return &VarDecl{base: base{t.pos}, Kind: "function", Decls: []Declarator{{Target: &Ident{base: base{t.pos}, Name: f.Name}, Init: f}}}, nil
 		case "import":
 			if !top {
 				return nil, p.errHere("`import` is only allowed at the top level of a module")
@@ -252,7 +252,7 @@ func (p *parser) statement(top bool) (Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &VarDecl{base: base{pos}, Kind: "function", Decls: []Declarator{{Target: &Ident{base{pos}, f.Name}, Init: f}}}, nil
+		return &VarDecl{base: base{pos}, Kind: "function", Decls: []Declarator{{Target: &Ident{base: base{pos}, Name: f.Name}, Init: f}}}, nil
 	}
 	if p.is("{") {
 		return p.block()
@@ -355,7 +355,7 @@ func (p *parser) bindingTarget() (Node, error) {
 				if err != nil {
 					return nil, err
 				}
-				op.Rest = &Ident{base{pos}, n}
+				op.Rest = &Ident{base: base{pos}, Name: n}
 				break
 			}
 			kp := p.cur().pos
@@ -363,7 +363,7 @@ func (p *parser) bindingTarget() (Node, error) {
 			if err != nil {
 				return nil, err
 			}
-			pp := PatternProp{Key: key, Target: &Ident{base{kp}, key}}
+			pp := PatternProp{Key: key, Target: &Ident{base: base{kp}, Name: key}}
 			if p.is(":") {
 				p.i++
 				if pp.Target, err = p.bindingTarget(); err != nil {
@@ -394,7 +394,7 @@ func (p *parser) bindingTarget() (Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Ident{base{pos}, n}, nil
+	return &Ident{base: base{pos}, Name: n}, nil
 }
 
 func (p *parser) param() (Param, error) {
@@ -532,6 +532,11 @@ func (p *parser) forStmt() (Node, error) {
 	if n.Body, err = p.statement(false); err != nil {
 		return nil, err
 	}
+	Walk(n.Body, func(x Node) {
+		if _, ok := x.(*Func); ok {
+			n.Closures = true
+		}
+	})
 	return n, nil
 }
 
@@ -889,7 +894,7 @@ func (p *parser) tryArrow() (Node, bool, error) {
 	}
 	var params []Param
 	if p.cur().kind == tIdent && p.peekTok(1).val == "=>" {
-		params = []Param{{Target: &Ident{base{p.cur().pos}, p.cur().val}}}
+		params = []Param{{Target: &Ident{base: base{p.cur().pos}, Name: p.cur().val}}}
 		p.i++
 	} else if p.is("(") {
 		// scan to the matching paren and check for =>
@@ -1192,10 +1197,10 @@ func (p *parser) primary() (Node, error) {
 	switch t.kind {
 	case tNumber:
 		p.i++
-		return &NumberLit{base{t.pos}, t.num}, nil
+		return &NumberLit{base: base{t.pos}, V: t.num, boxed: num(t.num)}, nil
 	case tString:
 		p.i++
-		return &StringLit{base{t.pos}, t.val}, nil
+		return &StringLit{base: base{t.pos}, V: t.val, boxed: t.val}, nil
 	case tTemplate:
 		p.i++
 		return p.templateLit(t)
@@ -1205,7 +1210,7 @@ func (p *parser) primary() (Node, error) {
 			return p.function(true)
 		}
 		p.i++
-		return &Ident{base{t.pos}, t.val}, nil
+		return &Ident{base: base{t.pos}, Name: t.val}, nil
 	case tKeyword:
 		if msg, bad := unsupportedKw[t.val]; bad && msg != "" {
 			return nil, p.errHere("%s", msg)
@@ -1351,7 +1356,7 @@ func (p *parser) objectLit() (Node, error) {
 				if kt.kind != tIdent {
 					return nil, p.errAt(kt.pos, "expected \":\" after property name %q", key)
 				}
-				var v Node = &Ident{base{kt.pos}, key}
+				var v Node = &Ident{base: base{kt.pos}, Name: key}
 				if p.is("=") { // only valid when re-parsed as a pattern
 					p.i++
 					d, err := p.assignment()

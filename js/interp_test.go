@@ -93,6 +93,8 @@ func TestLanguage(t *testing.T) {
 		{"comma + update", `let i = 0, j = 10; i++, j--; [i, j]`, `[1,9]`},
 		{"labels-free nested break", `let n = 0; for (const a of [1,2]) { for (const b of [1,2,3]) { if (b === 2) break; n++ } } n`, `2`},
 		{"logical assign", `let a = null; a ??= 5; let b = 1; b &&= 7; [a, b]`, `[5,7]`},
+		{"modulo semantics", `[7 % 3, -7 % 3, 7 % -3, 5.5 % 2, 1 / (-4 % 2) === -Infinity, 1 / (4 % 2) === Infinity, isNaN(4 % 0)]`, `[1,-1,1,1.5,true,true,true]`},
+		{"shadowing after cached lookup", `let x = 1; const r = []; for (let i = 0; i < 3; i++) { r.push(x); if (i === 1) { let x = 99; r.push(x) } } r`, `[1,1,99,1]`},
 		{"parseInt/Float", `[parseInt("42px"), parseInt("ff", 16), parseFloat("3.5e1x"), Number("  12 "), Number("x")]`, `[42,255,35,12,null]`},
 	}
 	for _, c := range cases {

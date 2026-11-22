@@ -195,9 +195,41 @@ type Env struct {
 	parent *Env
 }
 
-func newEnv(parent *Env) *Env { return &Env{vars: map[string]*binding{}, parent: parent} }
+func newEnv(parent *Env) *Env { return &Env{parent: parent} } // vars allocated on first declare
 
-func (e *Env) declare(name string, v Value, kind string) { e.vars[name] = &binding{v, kind} }
+// declGen changes whenever any binding is declared anywhere; identifier
+// caches are only trusted while it is unchanged, so a later declaration that
+// shadows a cached name is never missed.
+var declGen atomic.Uint64
+
+type identCache struct {
+	env *Env
+	b   *binding
+	gen uint64
+}
+
+// resolve looks up an identifier, caching the binding on the AST node for
+// repeated evaluation from the same scope (loops).
+func resolve(n *Ident, env *Env) (*binding, bool) {
+	g := declGen.Load()
+	c := n.cache.Load()
+	if c != nil && c.env == env && c.gen == g {
+		return c.b, true
+	}
+	b, ok := env.lookup(n.Name)
+	if ok && (c == nil || c.env == env) {
+		n.cache.Store(&identCache{env: env, b: b, gen: g})
+	}
+	return b, ok
+}
+
+func (e *Env) declare(name string, v Value, kind string) {
+	declGen.Add(1)
+	if e.vars == nil {
+		e.vars = make(map[string]*binding, 4)
+	}
+	e.vars[name] = &binding{v, kind}
+}
 
 func (e *Env) lookup(name string) (*binding, bool) {
 	for s := e; s != nil; s = s.parent {
@@ -275,10 +307,11 @@ func (r *Runner) positioned(n Node, err error) error {
 var ErrBudget = errors.New("step budget exceeded")
 
 func (r *Runner) tick(n Node) error {
-	if r.it.steps.Add(1) > r.it.cfg.Limits.MaxSteps {
+	n0 := r.it.steps.Add(1)
+	if n0 > r.it.cfg.Limits.MaxSteps {
 		return r.it.fail(&Error{Kind: "runtime", Pos: n.P(), File: r.file, Msg: fmt.Sprintf("%v (limit %d)", ErrBudget, r.it.cfg.Limits.MaxSteps)})
 	}
-	if r.it.ctx.Err() != nil {
+	if n0&63 == 0 && r.it.ctx.Err() != nil {
 		return r.it.stopErr(n, r.file)
 	}
 	return nil
@@ -647,10 +680,28 @@ func (r *Runner) exec(s Node, env *Env) (ctrl, string, Value, error) {
 			if err := r.tick(n); err != nil {
 				return 0, "", nil, err
 			}
+			if !n.Closures {
+				c, l, v, err := r.exec(n.Body, loopEnv)
+				if err != nil {
+					return 0, "", nil, err
+				}
+				if c == cBreak && l == "" {
+					return cNormal, "", nil, nil
+				}
+				if c == cReturn || (c != cNormal && l != "") {
+					return c, l, v, nil
+				}
+				if n.Update != nil {
+					if _, err := r.eval(n.Update, loopEnv); err != nil {
+						return 0, "", nil, err
+					}
+				}
+				continue
+			}
 			// per-iteration copy of let bindings so closures capture this iteration
 			iterEnv := newEnv(env)
 			for k, b := range loopEnv.vars {
-				iterEnv.vars[k] = &binding{b.v, b.kind}
+				iterEnv.declare(k, b.v, b.kind)
 			}
 			c, l, v, err := r.exec(n.Body, iterEnv)
 			for k, b := range iterEnv.vars {
@@ -897,7 +948,7 @@ func (r *Runner) bindPattern(target Node, v Value, env *Env, kind string) error 
 func (r *Runner) assignTo(target Node, v Value, env *Env) error {
 	switch t := target.(type) {
 	case *Ident:
-		b, ok := env.lookup(t.Name)
+		b, ok := resolve(t, env)
 		if !ok {
 			return r.throwAt(t, "ReferenceError", "%s is not defined", t.Name)
 		}
@@ -923,7 +974,7 @@ func (r *Runner) assignTo(target Node, v Value, env *Env) error {
 			return err
 		}
 		for name, b := range tmp.vars {
-			if err := r.assignTo(&Ident{base{target.P()}, name}, b.v, env); err != nil {
+			if err := r.assignTo(&Ident{base: base{target.P()}, Name: name}, b.v, env); err != nil {
 				return err
 			}
 		}
@@ -996,8 +1047,14 @@ func (r *Runner) eval(x Node, env *Env) (Value, error) {
 func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 	switch n := x.(type) {
 	case *NumberLit:
+		if n.boxed != nil {
+			return n.boxed, nil
+		}
 		return n.V, nil
 	case *StringLit:
+		if n.boxed != nil {
+			return n.boxed, nil
+		}
 		return n.V, nil
 	case *BoolLit:
 		return n.V, nil
@@ -1019,7 +1076,7 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 		}
 		return b.String(), nil
 	case *Ident:
-		b, ok := env.lookup(n.Name)
+		b, ok := resolve(n, env)
 		if !ok {
 			return nil, r.throwAt(n, "ReferenceError", "%s is not defined", n.Name)
 		}
@@ -1129,17 +1186,21 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 			return nil, err
 		}
 		o := toNumber(old)
-		nv := o + 1
+		nf := o + 1
 		if n.Op == "--" {
-			nv = o - 1
+			nf = o - 1
 		}
+		nv := num(nf)
 		if err := r.assignTo(n.X, nv, env); err != nil {
 			return nil, err
 		}
 		if n.Prefix {
 			return nv, nil
 		}
-		return o, nil
+		if _, isNum := old.(float64); isNum {
+			return old, nil // already boxed: no new allocation
+		}
+		return num(o), nil
 	case *Binary:
 		l, err := r.eval(n.L, env)
 		if err != nil {
@@ -1282,15 +1343,24 @@ func binaryOp(op string, l, r Value) (Value, error) {
 		if ls || rs || !isPrimitive(l) || !isPrimitive(r) {
 			return toString(l) + toString(r), nil
 		}
-		return toNumber(l) + toNumber(r), nil
+		return num(toNumber(l) + toNumber(r)), nil
 	case "-":
-		return toNumber(l) - toNumber(r), nil
+		return num(toNumber(l) - toNumber(r)), nil
 	case "*":
-		return toNumber(l) * toNumber(r), nil
+		return num(toNumber(l) * toNumber(r)), nil
 	case "/":
-		return toNumber(l) / toNumber(r), nil
+		return num(toNumber(l) / toNumber(r)), nil
 	case "%":
-		return math.Mod(toNumber(l), toNumber(r)), nil
+		a, b := toNumber(l), toNumber(r)
+		if a >= -(1<<53) && a <= 1<<53 && b >= -(1<<53) && b <= 1<<53 && b != 0 &&
+			a == math.Trunc(a) && b == math.Trunc(b) {
+			m := float64(int64(a) % int64(b)) // Go and JS both take the dividend's sign
+			if m == 0 && (a < 0 || (a == 0 && math.Signbit(a))) {
+				return math.Copysign(0, -1), nil // JS: -4 % 2 === -0
+			}
+			return num(m), nil
+		}
+		return num(math.Mod(a, b)), nil
 	case "**":
 		return math.Pow(toNumber(l), toNumber(r)), nil
 	case "==":
@@ -1454,8 +1524,12 @@ func (r *Runner) CallWithThis(fn, this Value, args []Value) (Value, error) {
 		if f.Decl.Async {
 			return r.startAsync(f, args), nil
 		}
-		child := &Runner{it: r.it, depth: r.depth + 1, file: f.File}
-		return child.callBody(f, args)
+		// Sync calls reuse this goroutine's runner (no allocation per call).
+		depth, file := r.depth, r.file
+		r.depth, r.file = depth+1, f.File
+		v, err := r.callBody(f, args)
+		r.depth, r.file = depth, file
+		return v, err
 	}
 	return nil, r.it.typeError(fmt.Sprintf("%s is not a function", typeOf(fn)))
 }
