@@ -21,9 +21,16 @@ authorization context you ran under). Re-fetch when either changes. Never put
 secret values in a cache. `<cli> code skill` prints a CLI-specific skill
 (its operations with one-line contracts) you can save next to this one.
 
-Operations wrapped from existing commands return
-`{ok, exit, stdout, stderr, json?}`: check `ok`, and read `json` when the
-command printed JSON.
+Results are JSON values: an operation returns its object or array directly
+(e.g. `const wins = await ops["window-list"](); wins.length`), and a failing
+operation **throws**, so use `try/catch`, not an `ok` check. (Older hosts that
+wrap commands without JSON-first mode return `{ok, exit, stdout, stderr, json?}`;
+`describe <op> --json` shows which via its `output_schema`.)
+
+Use `ops.a.b(...)` or `ops["name-with-dashes"](...)`; both are checked by
+`code check`. A program's result is its last top-level expression or default
+export: assign values computed inside `try` or loops to a variable and end
+with that variable.
 
 ## 2. Write a program
 

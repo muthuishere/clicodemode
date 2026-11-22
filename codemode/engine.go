@@ -225,10 +225,20 @@ func opsPath(n js.Node) (string, bool) {
 	var parts []string
 	for {
 		m, ok := n.(*js.Member)
-		if !ok || m.Computed != nil {
+		if !ok {
 			break
 		}
-		parts = append([]string{m.Name}, parts...)
+		name := m.Name
+		if m.Computed != nil {
+			// ops["capture-screenshot"](...) is checked like ops.x.y; any other
+			// computed key is only known at run time.
+			s, ok := m.Computed.(*js.StringLit)
+			if !ok || strings.Contains(s.V, ".") {
+				return "", false
+			}
+			name = s.V
+		}
+		parts = append([]string{name}, parts...)
 		n = m.Obj
 	}
 	id, ok := n.(*js.Ident)

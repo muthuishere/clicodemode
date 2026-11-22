@@ -315,3 +315,14 @@ func TestSpec_CLI11(t *testing.T) {
 		t.Fatalf("version: %d %q", code, out)
 	}
 }
+
+func TestOpsBracketNameIsChecked(t *testing.T) {
+	reg, _ := testRegistry(t)
+	_, diags := NewEngine(reg).Compile(`await ops["health"]["chek"]({})`, "p.js")
+	if len(diags) != 1 || !strings.Contains(diags[0].Hint, "health.check") {
+		t.Fatalf("ops[\"...\"] not checked: %v", diags)
+	}
+	if _, diags := NewEngine(reg).Compile(`await ops["health"]["check"]({})`, "p.js"); len(diags) != 0 {
+		t.Fatalf("valid bracket path flagged: %v", diags)
+	}
+}
