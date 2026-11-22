@@ -1,6 +1,8 @@
 package js
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -65,4 +67,36 @@ func TestStreamYAML(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "yaml:") {
 		t.Fatalf("got %v", err)
 	}
+}
+
+func TestYAMLParallelKeepsOrderAndFirstError(t *testing.T) {
+	var lines []string
+	for i := 0; i < 3000; i++ {
+		lines = append(lines, "---", fmt.Sprintf("i: %d", i), fmt.Sprintf("pad: %s", strings.Repeat("x", i%50)))
+	}
+	src := "const ls = " + mustJSON(lines) + "\n" +
+		"const docs = await stream(ls).yaml().toArray()\n" +
+		"docs.every((d, i) => d.i === i) && docs.length"
+	got, _ := run(t, src)
+	if got != "3000" {
+		t.Fatalf("order/count broken: %s", got)
+	}
+	// two bad documents: the earlier one (doc 10) must be reported
+	bad := append([]string{}, lines...)
+	bad[10*3+1] = "i: [unclosed"
+	bad[2000*3+1] = "i: {also bad"
+	err := runErr(t, "await stream("+mustJSON(bad)+").yaml().toArray()", Config{})
+	if err == nil || !strings.Contains(err.Error(), "unclosed") {
+		t.Fatalf("want first bad document's error, got %v", err)
+	}
+	// early take still stops cleanly
+	got, _ = run(t, "(await stream("+mustJSON(lines)+").yaml().take(3).toArray()).map(d => d.i)")
+	if got != "[0,1,2]" {
+		t.Fatalf("take: %s", got)
+	}
+}
+
+func mustJSON(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }

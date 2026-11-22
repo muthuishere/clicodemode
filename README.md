@@ -101,16 +101,17 @@ Try it: `go run ./cmd/democli code help`.
 |---|---|
 | Node `js-yaml` `loadAll` (V8 JIT, warmed) | 213 ms |
 | Go `yaml.v3` raw decode | 480 ms |
-| **CodeMode** `stream(...).yaml().count()` (end to end, ordered JS objects) | 555 ms |
+| **CodeMode** `stream(...).yaml().count()` (end to end, ordered JS objects, documents decoded in parallel) | 219 ms |
 | Node `yaml` `parseAllDocuments().toJS()` | 2,924 ms |
 
 Small input, fresh process each run (what a CLI call actually costs):
 Node + js-yaml **30 ms**, `democli code run` with `.yaml()` **4 ms**.
 
 So: for one-shot CLI and agent calls CodeMode is ~7x faster because there is
-no runtime to boot. On big files js-yaml's JIT parser is ~2.6x faster than
-Go's yaml.v3, which is our bottleneck (the CodeMode layer adds ~15%), and
-CodeMode is ~5x faster than the `yaml` package.
+no runtime to boot. On big files CodeMode matches js-yaml by decoding
+independent documents in parallel (in order) on all cores; no pure-Go YAML
+library was faster single-threaded (yaml.v2 similar, goccy/go-yaml ~3x
+slower). CodeMode is ~13x faster than the `yaml` package.
 
 ## Security
 

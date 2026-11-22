@@ -166,6 +166,12 @@ func (s *Stream) run(it *Interp, sink func(v Value) (stop bool, err error), done
 		in, wait := s.src(ctx)
 		taken := make([]int, len(s.stages))
 		yamlBuf := make([][]string, len(s.stages))
+		yamlPars := make([]*yamlPar, len(s.stages))
+		for i, st := range s.stages {
+			if st.kind == "yaml" {
+				yamlPars[i] = newYAMLPar()
+			}
+		}
 		var csvHeader []string
 		var fail error
 		early := false
@@ -211,17 +217,16 @@ func (s *Stream) run(it *Interp, sink func(v Value) (stop bool, err error), done
 							yamlBuf[si] = append(yamlBuf[si], line)
 							continue
 						}
-						doc, ok, err := yamlDecode(yamlBuf[si])
+						yamlPars[si].submit(yamlBuf[si])
 						yamlBuf[si] = nil
 						if rest != "" {
 							yamlBuf[si] = append(yamlBuf[si], rest)
 						}
+						docs, err := yamlPars[si].drain(false)
+						next = append(next, docs...)
 						if err != nil {
 							fail = err
 							return true
-						}
-						if ok {
-							next = append(next, doc)
 						}
 					case "csv":
 						rec, err := csv.NewReader(strings.NewReader(toString(v))).Read()
@@ -291,13 +296,14 @@ func (s *Stream) run(it *Interp, sink func(v Value) (stop bool, err error), done
 				if st.kind != "yaml" {
 					continue
 				}
-				doc, ok, err := yamlDecode(yamlBuf[si])
+				yamlPars[si].submit(yamlBuf[si])
 				yamlBuf[si] = nil
-				if err != nil {
-					fail = err
+				docs, err := yamlPars[si].drain(true)
+				if len(docs) > 0 && push(docs, si+1) {
 					break
 				}
-				if ok && push([]Value{doc}, si+1) {
+				if err != nil {
+					fail = err
 					break
 				}
 			}

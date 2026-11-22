@@ -2,6 +2,7 @@ package js
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,64 @@ func yamlSeparator(line string) (rest string, ok bool) {
 		return strings.TrimSpace(l[3:]), true
 	}
 	return "", false
+}
+
+// yamlPar decodes documents of one .yaml() stage in parallel while handing
+// them downstream strictly in input order. Documents are independent, so
+// this is safe; the first failing document (in order) reports the error.
+type yamlPar struct {
+	win []chan yamlRes // FIFO of in-flight documents
+	sem chan struct{}  // CPU-bound workers
+	max int            // window size (backpressure)
+}
+
+type yamlRes struct {
+	v   Value
+	ok  bool
+	err error
+}
+
+func newYAMLPar() *yamlPar {
+	n := runtime.GOMAXPROCS(0)
+	return &yamlPar{sem: make(chan struct{}, n), max: 4 * n}
+}
+
+// submit starts decoding one document.
+func (p *yamlPar) submit(lines []string) {
+	ch := make(chan yamlRes, 1)
+	p.win = append(p.win, ch)
+	p.sem <- struct{}{}
+	go func() {
+		defer func() { <-p.sem }()
+		v, ok, err := yamlDecode(lines)
+		ch <- yamlRes{v, ok, err}
+	}()
+}
+
+// drain returns finished documents in order. With all=false it returns only
+// documents already done, blocking on the head only while the window is full.
+func (p *yamlPar) drain(all bool) ([]Value, error) {
+	var out []Value
+	for len(p.win) > 0 {
+		var r yamlRes
+		if all || len(p.win) >= p.max {
+			r = <-p.win[0]
+		} else {
+			select {
+			case r = <-p.win[0]:
+			default:
+				return out, nil
+			}
+		}
+		p.win = p.win[1:]
+		if r.err != nil {
+			return out, r.err
+		}
+		if r.ok {
+			out = append(out, r.v)
+		}
+	}
+	return out, nil
 }
 
 // yamlDecode parses one buffered document. ok is false for an empty document
@@ -122,12 +181,21 @@ func yamlScalar(n *yaml.Node) (Value, error) {
 	case "!!null":
 		return nil, nil
 	case "!!bool":
+		switch n.Value { // YAML 1.2 core schema spellings; avoids reflection
+		case "true", "True", "TRUE":
+			return true, nil
+		case "false", "False", "FALSE":
+			return false, nil
+		}
 		var b bool
 		if err := n.Decode(&b); err != nil {
 			return nil, err
 		}
 		return b, nil
 	case "!!int":
+		if i, err := strconv.ParseInt(n.Value, 10, 64); err == nil {
+			return float64(i), nil
+		}
 		var i int64
 		if err := n.Decode(&i); err == nil {
 			return float64(i), nil
@@ -142,6 +210,9 @@ func yamlScalar(n *yaml.Node) (Value, error) {
 		}
 		return f, nil
 	case "!!float":
+		if f, err := strconv.ParseFloat(n.Value, 64); err == nil && !strings.ContainsAny(n.Value, "_xXnN") {
+			return f, nil
+		}
 		var f float64
 		if err := n.Decode(&f); err != nil {
 			return nil, err
