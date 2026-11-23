@@ -53,4 +53,4 @@ argv is always an array and never shell-interpreted. Literal disallowed programs
 - Register read-only verbs first. ctx-optimize registers only verbs that never write its store.
 - Leave `ExecPolicy` empty unless you need it. aos leaves it empty.
 - Keep secrets out of operation results. Caches never store secret values or approvals.
-- Programs are text from an agent. Review them as you would a shell command it proposed: `code check` shows the operations a program references before it runs.
+- Programs are text from an agent. Review them as you would a shell command it proposed: `code compile` lists the operations a program references before anything runs.

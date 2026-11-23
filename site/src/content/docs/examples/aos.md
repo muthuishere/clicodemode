@@ -6,14 +6,14 @@ sidebar:
 ---
 
 :::caution[Open PR, not released]
-This integration is [muthuishere/aos#123](https://github.com/muthuishere/aos/pull/123) on branch `feat/aos-code-json`. The code below is copied from that branch; it may change before merge.
+This integration is [muthuishere/aos#123](https://github.com/muthuishere/aos/pull/123) on branch `feat/aos-code-json`. The code below is copied from that branch (elisions marked); it may change before merge.
 :::
 
 aos drives the machine (windows, display, processes, files, capture). It already had `aos batch`, a YAML runner over a table of verbs (`batchVerbs`). Code Mode reuses that table.
 
 ## Registration
 
-From `internal/groups/code.go`:
+From `internal/groups/code.go` (abridged; `// ...` marks left-out lines):
 
 ```go
 func newCodeEngine(c *cli.Ctx) *codemode.Engine {
@@ -29,13 +29,13 @@ func newCodeEngine(c *cli.Ctx) *codemode.Engine {
 // codeOperations is one operation per batch verb, named as batch names it.
 func codeOperations(c *cli.Ctx) []codemode.Operation {
 	verbs := batchVerbs(c.Registry)
-	// ... skip "do", which would bypass the exclusions
+	// ... collect sorted names, skipping "do"
 	for _, n := range names {
 		v := verbs[n]
 		ops = append(ops, codemode.Operation{
 			Name:        n,
 			Description: codeDescription(v),
-			InputSchema: codeSchema(v), // args + every documented flag
+			InputSchema: codeSchema(v),
 			SideEffects: codemode.SideEffectLocal,
 			Handler:     codeHandler(c, v),
 		})
@@ -50,7 +50,7 @@ Each handler builds the same argv batch would and calls the same `cli.Invoke`, s
 
 ```go
 if _, set := in["json"]; hasJSON && !set {
-	argv = append(argv, "--json") // added when the command documents --json
+	argv = append(argv, "--json")
 }
 out := cli.Invoke(c, argv, "")
 if out.Exit != 0 {

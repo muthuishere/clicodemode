@@ -16,36 +16,37 @@ const oneProgram = `await Promise.all([
   ops.open({ args: ["https://youtube.com"] }),
 ])`;
 
-const aosGo = `// internal/groups/code.go
-func newCodeEngine(c *cli.Ctx) *codemode.Engine {
-	reg := codemode.NewRegistry(c.Version)
-	for _, op := range codeOperations(c) { // one operation per batch verb
-		reg.MustRegister(op)
-	}
-	eng := codemode.NewEngine(reg)
-	eng.Stdout = c.Stderr // print() and console.log go to stderr, never into the result
-	return eng
-}
-
+const aosGo = `// internal/groups/code.go (verbatim)
 func runCode(c *cli.Ctx, args []string) error {
-	cm := codemode.NewCLI(newCodeEngine(c), "aos code")
+	eng := newCodeEngine(c)
+	cm := codemode.NewCLI(eng, "aos code")
 	cm.Stdin, cm.Stdout, cm.Stderr = c.Stdin, c.Stdout, c.Stderr
 	if code := cm.Main(context.Background(), args); code != 0 {
 		return &cli.ExitError{Code: code}
 	}
 	return nil
+}
+
+func newCodeEngine(c *cli.Ctx) *codemode.Engine {
+	reg := codemode.NewRegistry(c.Version)
+	for _, op := range codeOperations(c) {
+		reg.MustRegister(op)
+	}
+	eng := codemode.NewEngine(reg)
+	eng.Stdout = c.Stderr // print() and console.log go to stderr, never into the result
+	return eng
 }`;
 
-const aosHandler = `// each handler runs the same cli.Invoke path as a batch step
-out := cli.Invoke(c, argv, "")
-if out.Exit != 0 {
-	return nil, fmt.Errorf("exit %d: %s", out.Exit, codeTail(out.Stderr, out.Stdout))
-}
-var j any
-if json.Unmarshal([]byte(out.Stdout), &j) == nil && strings.TrimSpace(out.Stdout) != "" {
-	return j, nil // the program gets the parsed JSON value
-}
-return strings.TrimSpace(out.Stdout), nil`;
+const aosHandler = `// codeHandler, abridged: the end of the returned func
+		out := cli.Invoke(c, argv, "")
+		if out.Exit != 0 {
+			return nil, fmt.Errorf("exit %d: %s", out.Exit, codeTail(out.Stderr, out.Stdout))
+		}
+		var j any
+		if json.Unmarshal([]byte(out.Stdout), &j) == nil && strings.TrimSpace(out.Stdout) != "" {
+			return j, nil
+		}
+		return strings.TrimSpace(out.Stdout), nil`;
 
 const aosProg = `const [wins, procs, disks, apps] = await Promise.all([
   ops["window-list"](), ops["process-list"]({ sort: "cpu", top: "5" }),
@@ -53,7 +54,7 @@ const aosProg = `const [wins, procs, disks, apps] = await Promise.all([
 ])
 ;({ windows: wins.length, topCpu: procs.map(p => p.name), disks: disks.length, runningApps: apps.length })`;
 
-const ctxGo = `// internal/app/codemode.go
+const ctxGo = `// internal/app/codemode.go (abridged: three of six registrations shown)
 func codeRegistry() *codemode.Registry {
 	reg := codemode.NewRegistry(version.Version)
 	ro := func(name, desc string, run cmdtree.Runner) {
@@ -66,7 +67,7 @@ func codeRegistry() *codemode.Registry {
 		func(_ context.Context, a []string, o, e io.Writer) error { return cmdQuery(a, o, e) })
 	ro("ctx.card", "Inspect one symbol: signature, doc, callers. args: [\\"<label>\\"].",
 		func(_ context.Context, a []string, o, _ io.Writer) error { return cmdCard(a, o) })
-	// ... change_plan, affected, path, hubs
+	// ... ctx.change_plan, ctx.affected, ctx.path, ctx.hubs
 	return reg
 }`;
 
@@ -120,10 +121,10 @@ $ echo $?
 2`;
 ---
 
-<div class="home">
+<div class="home not-content">
 	<section class="hero">
 		<p class="eyebrow"><span class="dot" aria-hidden="true"></span> Go library <span class="sep">/</span> v0.5.2 <span class="sep">/</span> MIT</p>
-		<h1>Your agent has Code Mode. <span class="accent">Does your CLI?</span></h1>
+		<h1 id="_top">Your agent has Code Mode. <span class="accent">Does your CLI?</span></h1>
 		<p class="deck">
 			Claude Code and OpenAI Codex can compose tool calls through generated programs. But if that code invokes a
 			CLI five times, the CLI still starts five times. What if the CLI itself ran one program and called its
@@ -165,7 +166,7 @@ $ echo $?
 	<section class="band" aria-labelledby="h-real">
 		<p class="kicker">02 / How we integrated</p>
 		<h2 id="h-real">Two real CLIs, real code</h2>
-		<p class="lede">Both integrations are <strong>open pull requests</strong>, not shipped releases. The excerpts below are copied from those branches.</p>
+		<p class="lede">Both integrations are <strong>open pull requests</strong>, not shipped releases. The Go excerpts are copied from those branches; where code is left out, the excerpt says so.</p>
 		<Tabs>
 			<TabItem label="aos  (254 operations)">
 				<div class="int-meta">
@@ -174,7 +175,7 @@ $ echo $?
 					<span class="muted">branch <code>feat/aos-code-json</code></span>
 				</div>
 				<p>aos already had a batch table of every verb. <code>aos code</code> registers one operation per batch verb, and each handler calls the same <code>cli.Invoke</code> path, so the two can never disagree about what a command does. Results are JSON-first; a failing command throws.</p>
-				<Code code={aosGo} lang="go" title="register and mount" />
+				<Code code={aosGo} lang="go" title="mount and register" />
 				<Code code={aosHandler} lang="go" title="JSON-first handler" />
 				<Code code={aosProg} lang="js" title="agent program: machine snapshot" />
 				<p class="note">Measured: 220 ms wall, 260 ms CPU and 158 bytes back, vs 196 ms, 280 ms CPU and 8,612 bytes for four parallel processes. <a href={href('/examples/aos/')}>Full aos walkthrough</a></p>
@@ -336,7 +337,7 @@ $ echo $?
 	.steps { list-style: none; padding: 0; margin: 1.5rem 0 0; counter-reset: s; display: grid; gap: 2.2rem; }
 	.steps > li { counter-increment: s; position: relative; padding-left: 3rem; min-width: 0; }
 	.steps > li::before { content: counter(s); position: absolute; left: 0; top: -0.1rem; width: 2rem; height: 2rem; border-radius: 50%; border: 1px solid var(--cc-line-strong); display: grid; place-items: center; font: 600 0.85rem var(--cc-mono); color: var(--cc-accent); }
-	.steps p { color: var(--cc-text-2); margin: 0.2rem 0 0.4rem; }
+	.steps p { color: var(--cc-text-2); margin: 0.9rem 0 0.4rem; }
 	.more { margin-top: 2rem; font-weight: 600; font-size: 0.95rem; }
 
 	.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }

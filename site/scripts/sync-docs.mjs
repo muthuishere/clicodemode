@@ -45,7 +45,18 @@ for (const [src, slug, description] of pages) {
 		title = h1[1].trim();
 		text = text.replace(h1[0], '');
 	}
-	text = text.replace(/\]\(([^)\s]+)\)/g, (_, t) => `](${rewriteLink(t, src)})`);
+	// rewrite Markdown links outside fenced blocks and inline code spans only
+	text = text
+		.split(/(^```[\s\S]*?^```)/m)
+		.map((part, i) =>
+			i % 2
+				? part
+				: part
+						.split(/(`[^`\n]*`)/)
+						.map((seg, j) => (j % 2 ? seg : seg.replace(/\]\(([^)\s]+)\)/g, (_, t) => `](${rewriteLink(t, src)})`)))
+						.join(''),
+		)
+		.join('');
 	const fm = [
 		'---',
 		`title: ${JSON.stringify(title)}`,

@@ -21,6 +21,7 @@ export default defineConfig({
 			editLink: { baseUrl: 'https://github.com/muthuishere/clicodemode/edit/main/site/src/content/docs/' },
 			lastUpdated: false,
 			customCss: ['./src/styles/theme.css'],
+			components: { PageTitle: './src/components/PageTitle.astro' },
 			expressiveCode: {
 				themes: ['github-dark-default', 'github-light-default'],
 				styleOverrides: {

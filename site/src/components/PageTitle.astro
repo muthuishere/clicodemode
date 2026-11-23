@@ -1,0 +1,7 @@
+---
+// The splash homepage renders its own h1 (id="_top") in Home.astro, so the
+// skip link still lands on the page heading. Other pages use the default.
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+const splash = Astro.locals.starlightRoute.entry.data.template === 'splash';
+---
+{!splash && <Default />}

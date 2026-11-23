@@ -49,7 +49,7 @@ type Engine struct {
 	Policy      Policy
 	Stdout      io.Writer // print/console.log output (default os.Stderr)
 	Cache       *Cache    // compiled-plan cache for check/compile (nil = off)
-	WorkflowCLI string    // command prefix used by workflow YAML export
+	WorkflowCLI string    // executable toYAML names in `run: <cli> code run-step` (default: running binary's base name)
 }
 
 eng := codemode.NewEngine(reg)

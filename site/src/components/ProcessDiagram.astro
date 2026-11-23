@@ -2,7 +2,7 @@
 // Three CLI processes vs one `code run` process. Inline SVG, theme tokens only.
 ---
 <figure class="pd" aria-labelledby="pd-cap">
-	<div class="pd-scroll" tabindex="0" aria-label="Diagram, scroll horizontally on small screens"><svg viewBox="0 0 880 300" role="img" aria-labelledby="pd-title pd-desc">
+	<div class="pd-scroll" role="region" tabindex="0" aria-label="Diagram, scroll horizontally on small screens"><svg viewBox="0 0 880 300" role="img" aria-labelledby="pd-title pd-desc">
 		<title id="pd-title">Three processes versus one</title>
 		<desc id="pd-desc">Left: the agent starts aos three times; each process boots, parses its arguments, runs one command and prints text. Right: the agent starts aos once with code run; one process calls three registered operations in parallel and returns one JSON value.</desc>
 		<defs>
@@ -62,7 +62,7 @@
 <style>
 	.pd { margin: 0; }
 	.pd-scroll { overflow-x: auto; }
-	.pd svg { width: 100%; min-width: 720px; height: auto; display: block; }
+	.pd svg { width: 100%; min-width: 880px; height: auto; display: block; }
 	.pd-cmd { font-size: 9.5px; }
 	.pd-h { font: 600 13px var(--cc-sans); fill: var(--cc-text); }
 	.pd-lbl { font: 600 13px var(--cc-sans); fill: var(--cc-text-2); }

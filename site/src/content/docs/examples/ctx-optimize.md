@@ -6,19 +6,19 @@ sidebar:
 ---
 
 :::caution[Open PR, not released]
-This integration is [muthuishere/ctx-optimize#20](https://github.com/muthuishere/ctx-optimize/pull/20) on branch `feat/code-mode`, pinned to clicodemode v0.5.2. The code below is copied from that branch.
+This integration is [muthuishere/ctx-optimize#20](https://github.com/muthuishere/ctx-optimize/pull/20) on branch `feat/code-mode`, pinned to clicodemode v0.5.2. The code below is copied from that branch; elisions are marked.
 :::
 
 ctx-optimize answers code questions from a prebuilt knowledge graph: `query`, `card`, `change-plan`, `affected`, `path`, `hubs`. Agents typically chain them: query, then a card on each top hit, then a change plan.
 
 ## Registration: the whole file
 
-`internal/app/codemode.go` is 45 lines:
+`internal/app/codemode.go` is 45 lines. Abridged (three of the six registrations shown):
 
 ```go
-// cmdCode mounts CLI Code Mode: an agent sends ONE program that chains the
-// read-only verbs in a single process. Only verbs that never write the store
-// are registered, so a program cannot gather or mutate.
+// cmdCode mounts CLI Code Mode (ADR 2026-11-22-code-mode): an agent sends ONE
+// program that chains the read-only verbs in a single process. Only verbs that
+// never write the store are registered, so a program cannot gather or mutate.
 func cmdCode(args []string, stdout, stderr io.Writer) int {
 	e := codemode.NewEngine(codeRegistry())
 	cli := codemode.NewCLI(e, "ctx-optimize code")
@@ -40,7 +40,7 @@ func codeRegistry() *codemode.Registry {
 		func(_ context.Context, a []string, o, _ io.Writer) error { return cmdCard(a, o) })
 	ro("ctx.change_plan", "Before editing a symbol: callers, blast radius, tests to run. args: [\"<symbol>\"].",
 		func(_ context.Context, a []string, o, _ io.Writer) error { return cmdChangePlan(a, o) })
-	// ctx.affected, ctx.path, ctx.hubs follow the same shape
+	// ... ctx.affected, ctx.path, ctx.hubs
 	return reg
 }
 ```

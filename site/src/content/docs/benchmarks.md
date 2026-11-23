@@ -67,6 +67,6 @@ Small input, fresh process: Node + js-yaml 30 ms, `democli code run` with `.yaml
 - **Faster than Node in general.** Node wins tight loops.
 - **Sandboxing.** See [Security and policy](/clicodemode/security/).
 
-## Reproduce
+## Where the code is
 
-The interpreter and YAML benchmarks live in `js/perf_bench_test.go` and `js/yaml_bench_test.go` (run with `go test -bench`). The aos and ctx-optimize numbers were taken on their integration branches; wrap each variant in `hyperfine` or a loop of fresh runs and take medians.
+The interpreter and YAML benchmarks live in `js/perf_bench_test.go` and `js/yaml_bench_test.go`.
