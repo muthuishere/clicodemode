@@ -141,7 +141,7 @@ func TestSessionDetachAndPoll(t *testing.T) {
 
 	// A background rejection nobody handled is an error event.
 	r = s.Run(ctx, "Promise.reject(new Error('late')); 1", RunOptions{})
-	evs = pollUntilDone(t, s, r.Handle)
+	evs = append(r.Events, pollUntilDone(t, s, r.Handle)...) // the error may land before Run returns
 	if r.OK && (len(evs) < 1 || evs[0].Kind != "error" || !strings.Contains(evs[0].Error, "late")) {
 		t.Fatalf("want error event: %+v %+v", r, evs)
 	}

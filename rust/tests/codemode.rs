@@ -28,15 +28,15 @@ fn add_op_and_run() {
 }
 
 #[test]
-fn check_reports_unsupported_class_with_position() {
+fn check_reports_unsupported_construct_with_position() {
     let mut cm = CodeMode::new("1.0.0").unwrap();
     health(&mut cm);
-    let ds = cm.check("const a = 1;\n  class A {}\n", "prog.js").unwrap();
+    let ds = cm.check("const a = 1;\n  delete a.b\n", "prog.js").unwrap();
     assert!(!ds.is_empty());
     let d = &ds[0];
     assert_eq!(d.severity, "error");
     assert_eq!((d.file.as_str(), d.line, d.col), ("prog.js", 2, 3), "{d}");
-    assert!(d.message.contains("class"), "{d}");
+    assert!(d.message.contains("delete"), "{d}");
     // a clean program yields no diagnostics, and unknown ops are caught statically
     assert!(cm.check("1 + 1", "ok.js").unwrap().is_empty());
     let ds = cm.check("ops.health.chek({})", "typo.js").unwrap();
@@ -192,7 +192,7 @@ fn fingerprint_changes_when_an_op_is_added() {
     assert_ne!(before.fingerprint, after.fingerprint);
     assert_eq!(after.operations.len(), 2);
     assert_eq!(after.spec, "codemode/v0");
-    assert!(after.language.unsupported.iter().any(|u| u == "class"));
+    assert!(after.language.unsupported.iter().any(|u| u == "generators"));
 }
 
 #[test]

@@ -26,11 +26,11 @@ test("operations/describe list registered ops", async () => {
   assert.equal((await cm.describe("demo.add")).side_effects, "none");
 });
 
-test("check reports unsupported class with file:line:col", async () => {
+test("check reports an unsupported construct with file:line:col", async () => {
   const cm = make();
-  const r = await cm.check("const x = 1;\nclass A {}\n", "prog.js");
+  const r = await cm.check("const x = 1;\ndelete x.y\n", "prog.js");
   assert.equal(r.ok, false);
-  const d = r.diagnostics.find((d) => /class/.test(d.message));
+  const d = r.diagnostics.find((d) => /delete/.test(d.message));
   assert.ok(d, JSON.stringify(r));
   assert.equal(d.file, "prog.js");
   assert.equal(d.line, 2);

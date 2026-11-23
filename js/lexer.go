@@ -41,6 +41,7 @@ const (
 	tString
 	tTemplate
 	tPunct
+	tRegex // val = source, flags in flags
 )
 
 type token struct {
@@ -49,6 +50,7 @@ type token struct {
 	num      float64
 	pos      Pos
 	nlBefore bool // newline between previous token and this one
+	flags    string
 }
 
 var keywords = map[string]bool{
@@ -58,6 +60,7 @@ var keywords = map[string]bool{
 	"try": true, "catch": true, "finally": true, "throw": true, "new": true, "typeof": true,
 	"async": true, "await": true, "import": true, "export": true, "from": true, "class": true,
 	"this": true, "delete": true, "void": true, "yield": true, "switch": true, "case": true, "default": true,
+	"super": true, "instanceof": true,
 }
 
 // "of", "from", "async" are contextual: they lex as identifiers and the
@@ -88,7 +91,12 @@ func lex(src, file string) ([]token, error) {
 		if err != nil {
 			return nil, err
 		}
-		t, err := l.next()
+		var t token
+		if l.i < len(l.src) && l.peek(0) == '/' && regexAllowed(toks) {
+			t, err = l.regex(l.pos())
+		} else {
+			t, err = l.next()
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -399,5 +407,64 @@ func (l *lexer) template(p Pos) (token, error) {
 		default:
 			b.WriteRune(c)
 		}
+	}
+}
+
+// regexAllowed reports whether a '/' starts a regex literal: it does where
+// an expression may begin, i.e. not after a value (identifier, literal, `)`
+// or `]`).
+func regexAllowed(toks []token) bool {
+	if len(toks) == 0 {
+		return true
+	}
+	t := toks[len(toks)-1]
+	switch t.kind {
+	case tIdent, tNumber, tString, tTemplate, tRegex:
+		return false
+	case tKeyword:
+		switch t.val {
+		case "this", "super", "true", "false", "null", "undefined":
+			return false
+		}
+		return true
+	case tPunct:
+		switch t.val {
+		case ")", "]", "}", "++", "--":
+			return false
+		}
+	}
+	return true
+}
+
+// regex lexes /source/flags.
+func (l *lexer) regex(p Pos) (token, error) {
+	l.adv()
+	var b strings.Builder
+	inClass := false
+	for {
+		if l.i >= len(l.src) || l.peek(0) == '\n' {
+			return token{}, l.errf(p, "unterminated regex literal")
+		}
+		c := l.adv()
+		switch {
+		case c == '\\':
+			if l.i >= len(l.src) {
+				return token{}, l.errf(p, "unterminated regex literal")
+			}
+			b.WriteRune(c)
+			b.WriteRune(l.adv())
+			continue
+		case c == '[':
+			inClass = true
+		case c == ']':
+			inClass = false
+		case c == '/' && !inClass:
+			var f strings.Builder
+			for l.i < len(l.src) && isIdentStart(l.peek(0)) {
+				f.WriteRune(l.adv())
+			}
+			return token{kind: tRegex, val: b.String(), flags: f.String(), pos: p}, nil
+		}
+		b.WriteRune(c)
 	}
 }

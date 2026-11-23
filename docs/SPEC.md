@@ -1,7 +1,7 @@
 # CLI CodeMode specification
 
 Spec version `codemode/v0` (the `spec` field of `code capabilities`).
-Implementation: this repository, v0.6.x. Keywords MUST, MUST NOT, SHOULD and
+Implementation: this repository, v0.7.x. Keywords MUST, MUST NOT, SHOULD and
 MAY are normative. Every requirement has an ID; `codemode/spec_test.go`
 checks the CLI-level ones end to end and names the test covering each of the
 others. A change that breaks a requirement is a breaking change.
@@ -54,11 +54,17 @@ and returns only the result.
 | ID | Requirement |
 |---|---|
 | LANG-1 | Supported constructs follow normal JavaScript semantics: const/let, literals, template literals, objects/arrays, destructuring, spread/rest, all operators incl. `??` `?.` `**`, if/else, ternary, for, for-of, for-in, while, do-while, break/continue, functions, arrows, closures, default params, try/catch/finally/throw, async/await, Promises (`resolve reject all allSettled race any`, `.then .catch .finally`). |
-| LANG-2 | Unsupported constructs (`class new this` generators `switch delete` regex, dynamic `import()`, `eval`) are **parse errors** with a message naming the construct, never silent misbehaviour. |
+| LANG-2 | Unsupported constructs (generators, `delete`, class getters/setters and `#private` members, regex lookaround and backreferences, dynamic `import()`, `eval`) are **parse errors** with a message naming the construct, never silent misbehaviour. |
 | LANG-3 | Static imports: only relative `./` or `../` paths ending `.js` (code) or `.json` (data, default export), confined to the module root (after resolving symlinks, so a link inside the root cannot reach a file outside it); cycles are an error. No npm, no Node or browser APIs, no ambient globals beyond those listed in CAP-4. |
 | LANG-4 | Result of a run: the default export (a function is called and awaited), otherwise the last top-level expression statement's value; a promise result is awaited. |
 | LANG-5 | A rejected promise nobody awaited or caught fails the run ("unhandled promise rejection"). |
 | LANG-6 | Object key order follows JS rules (integer-like keys ascending, then insertion order) in iteration and JSON output. |
+| LANG-7 | Regex literals and `RegExp` run on RE2 (matching time linear in the input). `test exec` and the string methods `match matchAll replace replaceAll split search` accept a regex, with flags `g i m s y`, numbered and named groups, `$1 $<name> $& $$` replacements and function replacers. Indexes are UTF-16 code units, as in JS. |
+| LANG-8 | `switch` compares with `===`, falls through until `break`, runs `default` when nothing matches wherever it appears, and has one block scope. |
+| LANG-9 | `class` declarations and expressions support a constructor, methods, async methods, instance and static fields, static methods, `extends` (a class or a built-in error constructor) and `super(...)`/`super.m(...)`. `new` works on classes, built-in constructors and plain non-arrow functions; `instanceof` follows the class chain; `this` is bound in methods and functions called as `obj.f()`, lexically in arrows. Calling a class without `new` is a TypeError. |
+| LANG-10 | `Map` and `Set` keep insertion order and compare keys like `===` (NaN equals NaN); they iterate in for-of and spread. `Date` stores epoch milliseconds, parses ISO strings, serialises to ISO in JSON, and subtracts to a number. In a run result a Map becomes an object, a Set an array, a Date an ISO string. |
+| LANG-11 | A tagged template calls the tag with `(strings, ...values)`; `strings.raw` is present; values are passed separately and never spliced into the strings, so a host may define its own quoting tag. |
+| LANG-12 | Built-ins listed in CAP-4 `globals` exist with JS semantics, including `Number.isInteger/isFinite/isNaN`, `String.fromCharCode/raw`, `Array.of`, `Object.freeze`, string `localeCompare lastIndexOf concat padStart at`, array `findLast toSorted toReversed with fill entries`. |
 
 ## 6. Limits and cancellation
 
@@ -98,7 +104,21 @@ and returns only the result.
 | MCP-1 | The core packages MUST NOT import `adapters/mcp`. |
 | MCP-2 | It serves JSON-RPC 2.0 over stdio (protocol 2025-06-18): `initialize`, `ping`, `tools/list`, `tools/call`, `notifications/cancelled`; tools `code_capabilities code_describe code_check code_run code_docs`; `code_run` takes an optional `input` (any JSON). A long-lived adapter process lets an agent call `code_run` repeatedly with no new process per call. |
 
-## 10. Security statement
+## 10. Sessions
+
+A session (`Engine.NewSession`) keeps one top-level scope across many
+programs, like a REPL. Every run is still checked before it runs (OP-3,
+LANG-2) and its operations validated as in OP-2.
+
+| ID | Requirement |
+|---|---|
+| SES-1 | Top-level declarations of one run are visible to later runs. A later run may declare the same name again; one run may not declare a name twice; a `const` from an earlier run cannot be assigned. |
+| SES-2 | Each run gets its own `input`, its own limits and its own diagnostics; a program with check errors does not run and is reported with a source snippet (`line | text` and a caret). |
+| SES-3 | A run's timeout, its caller's context and `Cancel(handle)` stop that run only; the session and its scope stay usable. |
+| SES-4 | `Run` returns when the top level finishes, or at the detach deadline (default 30 s) with `detached: true`; work the program left running continues. `Poll(handle)` returns ordered events (`output`, `result`, `error`, `done`) once each, and whether the run has finished; an unhandled rejection after `Run` returned is an `error` event. `print`/`console.*` output is captured as events, never written to the process. |
+| SES-5 | `Vars()` lists persistent bindings with name, kind, type and a short preview, sorted by name; `Reset()` clears them; `Close()` cancels every run and returns once they stopped; runs after `Close` fail. |
+
+## 11. Security statement
 
 The interpreter is **not a sandbox for hostile code**. It bounds steps, time,
 depth and concurrency and exposes only registered operations and
@@ -106,7 +126,7 @@ policy-permitted processes, but operations run with the host CLI's
 privileges. Hosts MUST register only what they are willing to let a program
 do.
 
-## 11. Compatibility
+## 12. Compatibility
 
 Legacy AOS batch YAML and WFNexus workflow YAML are not reinterpreted by this
 library; see `COMPATIBILITY.md`. WFNexus export (WF-5) was validated against

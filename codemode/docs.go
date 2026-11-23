@@ -38,12 +38,23 @@ arrays, objects, destructuring, spread, all arithmetic/comparison/logical
 operators incl. ?? and ?., if/else, ternary, for, for-of, for-in, while,
 do-while, break/continue, functions, arrow functions, closures, default and
 rest parameters, try/catch/finally/throw, async/await, Promise.resolve/
-reject/all/allSettled/race/any, .then/.catch/.finally, static
-import/export of ./relative .js modules and .json data files.
+reject/all/allSettled/race/any, .then/.catch/.finally, switch, classes
+(constructor, methods, fields, static, extends, super), new, instanceof,
+this in methods, regex literals and RegExp, tagged templates, Map, Set,
+Date, static import/export of ./relative .js modules and .json data files.
 
-Globals: call, ops, workflow, step, print, console.log, JSON, Math, Object, Array.isArray,
-Array.from, String, Number, Boolean, parseInt, parseFloat, isNaN, sleep(ms),
-pmap(items, fn, {concurrency}), Error(msg) (no "new").
+Regexes run on RE2: matching is linear in the input (no catastrophic
+backtracking); lookahead, lookbehind and backreferences are check errors.
+test, exec, match, matchAll, replace/replaceAll ($1, $<name>, a function),
+split and search accept a regex.
+
+Tagged templates call the tag with (strings, ...values), so a host or a
+program can define its own tag; values are never spliced into the strings.
+
+Globals: call, ops, workflow, step, print, console.log, JSON, Math, Object, Array,
+String, Number, Boolean, parseInt, parseFloat, isNaN, sleep(ms),
+pmap(items, fn, {concurrency}), Promise, Map, Set, Date, RegExp,
+Error/TypeError/RangeError/SyntaxError.
 
 Bounded parallel map: fn(item, index) runs with at most concurrency (default
 4) calls in flight; results come back in input order; the first rejection
@@ -51,8 +62,8 @@ rejects the whole and stops starting new items:
 
     const infos = await pmap(names, n => call("pkg.info", {name: n}), {concurrency: 8})
 
-Not supported (reported as errors): class, new, this, generators, switch,
-delete, dynamic import(), eval, require, npm packages, regular expressions.
+Not supported (reported as errors): generators, delete, getters/setters
+and #private class members, dynamic import(), eval, require, npm packages.
 
 ## Processes and streams (only if this host permits them)
 

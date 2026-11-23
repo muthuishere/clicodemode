@@ -111,6 +111,46 @@ type (
 		Body   []Node // statements; for expression-bodied arrows a single *Return
 		Arrow  bool
 		Async  bool
+		// UsesThis is set by the parser when the body (outside nested
+		// non-arrow functions) reads `this` or `super`.
+		UsesThis bool
+	}
+	// Switch is switch (Disc) { case ...: ... default: ... }.
+	Switch struct {
+		base
+		Disc  Node
+		Cases []SwitchCase
+	}
+	// NewExpr is new Callee(Args).
+	NewExpr struct {
+		base
+		Callee Node
+		Args   []Node
+	}
+	// ClassExpr is a class declaration or expression.
+	ClassExpr struct {
+		base
+		Name    string
+		Super   Node // nil without extends
+		Members []ClassMember
+	}
+	// ClassStmt declares a class by name.
+	ClassStmt struct {
+		base
+		Class *ClassExpr
+	}
+	// Super is `super` in super(...) or super.m(...).
+	Super struct{ base }
+	// TaggedTemplate is tag`...`.
+	TaggedTemplate struct {
+		base
+		Tag Node
+		Tpl *TemplateLit
+	}
+	// RegexLit is /source/flags.
+	RegexLit struct {
+		base
+		Source, Flags string
 	}
 	Seq struct {
 		base
@@ -231,3 +271,18 @@ type (
 		Body []Node
 	}
 )
+
+// SwitchCase is one case (Test nil for default).
+type SwitchCase struct {
+	Test Node
+	Body []Node
+}
+
+// ClassMember is a constructor, method or field of a class.
+type ClassMember struct {
+	Kind   string // "constructor", "method", "field"
+	Static bool
+	Name   string
+	Fn     *Func // constructor and methods
+	Value  Node  // field initializer (nil = undefined)
+}

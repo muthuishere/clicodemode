@@ -950,6 +950,14 @@ func (r *Runner) exec(s Node, env *Env) (ctrl, string, Value, error) {
 			}
 		}
 		return cNormal, "", nil, nil
+	case *Switch:
+		return r.execSwitch(n, env)
+	case *ClassStmt:
+		cls, err := r.evalClass(n.Class, env)
+		if err != nil {
+			return 0, "", nil, err
+		}
+		return cNormal, "", nil, r.bindPattern(&Ident{base: n.base, Name: n.Class.Name}, cls, env, "let")
 	case *Break:
 		return cBreak, n.Label, nil, nil
 	case *Continue:
@@ -1037,6 +1045,10 @@ func (r *Runner) iterate(v Value, at Node) ([]Value, error) {
 			out = append(out, string(ch))
 		}
 		return out, nil
+	case *MapV:
+		return mapEntries(c), nil
+	case *SetV:
+		return append([]Value(nil), c.m.keys...), nil
 	}
 	return nil, r.throwAt(at, "TypeError", "%s is not iterable", typeOf(v))
 }
@@ -1434,6 +1446,10 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 	case *Assign:
 		return r.evalAssign(n, env)
 	case *Member:
+		if _, ok := n.Obj.(*Super); ok {
+			fn, _, err := r.superMember(n, env)
+			return fn, err
+		}
 		obj, err := r.evalInner(n.Obj, env)
 		if err != nil {
 			return nil, err
@@ -1448,6 +1464,35 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 		return r.getMember(obj, key, n)
 	case *Call:
 		return r.evalCallInner(n, env)
+	case *NewExpr:
+		if err := r.tick(n); err != nil {
+			return nil, err
+		}
+		c, err := r.eval(n.Callee, env)
+		if err != nil {
+			return nil, err
+		}
+		args, err := r.evalArgs(n.Args, env)
+		if err != nil {
+			return nil, err
+		}
+		v, err := r.construct(c, args, n)
+		if err != nil {
+			return nil, r.positioned(n, err)
+		}
+		return v, nil
+	case *ClassExpr:
+		return r.evalClass(n, env)
+	case *TaggedTemplate:
+		return r.evalTagged(n, env)
+	case *RegexLit:
+		re, err := compileRegex(n.Source, n.Flags)
+		if err != nil {
+			return nil, r.throwAt(n, "SyntaxError", "%v", err)
+		}
+		return re, nil
+	case *Super:
+		return nil, r.throwAt(n, "SyntaxError", "`super` must be followed by ( or .")
 	case *Await:
 		v, err := r.eval(n.X, env)
 		if err != nil {
@@ -1599,6 +1644,8 @@ func binaryOp(op string, l, r Value) (Value, error) {
 		return float64(toInt32(l) >> (toUint32(r) & 31)), nil
 	case ">>>":
 		return float64(toUint32(l) >> (toUint32(r) & 31)), nil
+	case "instanceof":
+		return instanceOf(l, r)
 	case "in":
 		switch o := r.(type) {
 		case *Object:
@@ -1624,7 +1671,15 @@ func (r *Runner) evalCallInner(n *Call, env *Env) (Value, error) {
 		return nil, err
 	}
 	var fn, this Value = nil, Undefined
-	if m, ok := n.Callee.(*Member); ok {
+	if _, ok := n.Callee.(*Super); ok {
+		return r.superCall(n, env)
+	}
+	if m, ok := n.Callee.(*Member); ok && isSuper(m.Obj) {
+		var err error
+		if fn, this, err = r.superMember(m, env); err != nil {
+			return nil, err
+		}
+	} else if m, ok := n.Callee.(*Member); ok {
 		obj, err := r.evalInner(m.Obj, env)
 		if err != nil {
 			return nil, err
@@ -1672,8 +1727,10 @@ func (r *Runner) evalCallInner(n *Call, env *Env) (Value, error) {
 		}
 		args = append(args, v)
 	}
-	switch fn.(type) {
+	switch c := fn.(type) {
 	case *Function, *Builtin:
+	case *Class:
+		return nil, r.throwAt(n, "TypeError", "class %s cannot be called without `new`", c.Name)
 	default:
 		return nil, r.throwAt(n, "TypeError", "%s is not a function", describeCallee(n.Callee))
 	}
@@ -1726,20 +1783,26 @@ func (r *Runner) CallWithThis(fn, this Value, args []Value) (Value, error) {
 			return nil, &Error{Kind: "runtime", Pos: f.Decl.P(), File: r.file, Msg: fmt.Sprintf("maximum call depth %d exceeded", r.it.cfg.Limits.MaxCallDepth)}
 		}
 		if f.Decl.Async {
-			return r.startAsync(f, args), nil
+			return r.startAsync(f, this, args), nil
 		}
 		// Sync calls reuse this goroutine's runner (no allocation per call).
 		depth, file := r.depth, r.file
 		r.depth, r.file = depth+1, f.File
-		v, err := r.callBody(f, args)
+		v, err := r.callBody(f, this, args)
 		r.depth, r.file = depth, file
 		return v, err
 	}
 	return nil, r.it.typeError(fmt.Sprintf("%s is not a function", typeOf(fn)))
 }
 
-func (r *Runner) callBody(f *Function, args []Value) (Value, error) {
+func (r *Runner) callBody(f *Function, this Value, args []Value) (Value, error) {
 	env := newEnv(f.Env)
+	if f.Decl.UsesThis {
+		env.declare("this", this, "const")
+		if f.Home != nil {
+			env.declare("%home", f.Home, "const")
+		}
+	}
 	for i, p := range f.Decl.Params {
 		if p.Rest {
 			rest := &Array{}
@@ -1778,14 +1841,14 @@ func (r *Runner) callBody(f *Function, args []Value) (Value, error) {
 // startAsync runs an async function on its own goroutine. The caller blocks
 // until the callee first suspends or finishes, matching JS's "runs
 // synchronously until the first await".
-func (r *Runner) startAsync(f *Function, args []Value) *Promise {
+func (r *Runner) startAsync(f *Function, this Value, args []Value) *Promise {
 	p := r.it.newPromise()
 	yield := make(chan struct{})
 	r.it.tasks.Add(1)
 	go func() {
 		defer r.it.tasks.Done()
 		child := &Runner{it: r.it, depth: r.depth + 1, file: f.File, yield: yield}
-		v, err := child.callBody(f, args)
+		v, err := child.callBody(f, this, args)
 		if err != nil {
 			if t, ok := catchable(err); ok {
 				p.settle(2, t)

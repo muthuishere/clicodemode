@@ -2,15 +2,22 @@ package js
 
 // Walk calls fn for every node in the tree, parents before children.
 func Walk(n Node, fn func(Node)) {
+	walkPrune(n, func(x Node) bool { fn(x); return true })
+}
+
+// walkPrune is Walk where fn returning false skips that node's children.
+func walkPrune(n Node, fn func(Node) bool) {
 	if n == nil {
 		return
 	}
-	fn(n)
-	w := func(c Node) { Walk(c, fn) }
+	if !fn(n) {
+		return
+	}
+	w := func(c Node) { walkPrune(c, fn) }
 	ws := func(cs []Node) {
 		for _, c := range cs {
 			if c != nil {
-				Walk(c, fn)
+				walkPrune(c, fn)
 			}
 		}
 	}
@@ -140,6 +147,34 @@ func Walk(n Node, fn func(Node)) {
 		if x.Default != nil {
 			w(x.Default)
 		}
+	case *Switch:
+		w(x.Disc)
+		for _, c := range x.Cases {
+			if c.Test != nil {
+				w(c.Test)
+			}
+			ws(c.Body)
+		}
+	case *NewExpr:
+		w(x.Callee)
+		ws(x.Args)
+	case *ClassStmt:
+		w(x.Class)
+	case *ClassExpr:
+		if x.Super != nil {
+			w(x.Super)
+		}
+		for _, m := range x.Members {
+			if m.Fn != nil {
+				w(m.Fn)
+			}
+			if m.Value != nil {
+				w(m.Value)
+			}
+		}
+	case *TaggedTemplate:
+		w(x.Tag)
+		w(x.Tpl)
 	}
 }
 

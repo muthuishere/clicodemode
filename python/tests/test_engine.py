@@ -137,8 +137,8 @@ def test_syntax_error_is_a_result_with_diagnostics(cm: CodeMode) -> None:
 
 
 def test_unsupported_construct_names_it(cm: CodeMode) -> None:
-    r = cm.run("class A {}")
-    assert not r.ok and r.nothing_ran and "class" in r.diagnostics[0].message
+    r = cm.run("const o = {}\ndelete o.x")
+    assert not r.ok and r.nothing_ran and "delete" in r.diagnostics[0].message
 
 
 def test_exec_and_shell_denied_under_wasm(cm: CodeMode) -> None:
