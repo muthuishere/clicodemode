@@ -180,7 +180,7 @@ $ echo $?
 			</div>
 		</div>
 		<div class="diagram"><ProcessDiagram />
-		<p class="note">Observed on 2026-11-23 with Claude Code 2.1.330 and a wrapper that logs every <code>aos</code> start. Normal mode: three tool calls, three processes started one after another. Code Mode on: one program, three processes started together. <code>aos code run</code>: one process.</p></div>
+		<p class="note">Observed on 2026-11-23 with Claude Code 2.1.330 and a wrapper that logs every <code>aos</code> start. Normal mode: three tool calls, three processes started one after another, 11 s for the whole turn. Code Mode on: one program, three processes started together, 2.1 s inside the program. <code>aos code run</code>: one process, 361 ms reported by aos. The times are measured at different points, so read them as a rough picture, not a benchmark. In every run the window move failed with "Accessibility permission denied", because the freshly downloaded aos binary had not been granted macOS Accessibility; brightness and open worked.</p></div>
 	</section>
 
 	<section class="band" aria-labelledby="h-real">
@@ -192,8 +192,7 @@ $ echo $?
 				<div class="int-meta">
 					<span class="status">shipped</span>
 					<a href="https://github.com/muthuishere/aos/releases/tag/v0.15.1">aos v0.15.1</a>
-					<span class="muted">merged in <a href="https://github.com/muthuishere/aos/pull/123">aos#123</a></span>
-				</div>
+									</div>
 				<p>aos already had a batch table of every verb. <code>aos code</code> registers one operation per batch verb, and each handler calls the same <code>cli.Invoke</code> path, so the two can never disagree about what a command does. Results are JSON-first; a failing command throws.</p>
 				<Code code={aosGo} lang="go" title="mount and register" />
 				<Code code={aosHandler} lang="go" title="JSON-first handler" />

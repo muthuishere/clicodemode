@@ -6,7 +6,7 @@ sidebar:
 ---
 
 :::caution[Open PR, not released]
-This integration shipped in [aos v0.15.1](https://github.com/muthuishere/aos/releases/tag/v0.15.1) (merged as [aos#123](https://github.com/muthuishere/aos/pull/123)). The code below is copied from it (elisions marked).
+This integration shipped in [aos v0.15.1](https://github.com/muthuishere/aos/releases/tag/v0.15.1). The code below is copied from it (elisions marked).
 :::
 
 aos drives the machine (windows, display, processes, files, capture). It already had `aos batch`, a YAML runner over a table of verbs (`batchVerbs`). Code Mode reuses that table.
@@ -111,6 +111,6 @@ Against parallel spawning the wall time is even (the snapshot is slightly slower
 
 ## Sources
 
-- PR: [muthuishere/aos#123](https://github.com/muthuishere/aos/pull/123)
+- Release: [aos v0.15.1](https://github.com/muthuishere/aos/releases/tag/v0.15.1)
 - Registration: `internal/groups/code.go` on `feat/aos-code-json`
 - Agent skill: `internal/skill/assets/aos/references/code.md` on the same branch
