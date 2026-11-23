@@ -5,7 +5,7 @@ sidebar:
   label: ctx-optimize
 ---
 
-:::caution[Open PR, not released]
+:::note[Shipped]
 This integration shipped in [ctx-optimize v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0) (`npm i -g @muthuishere/ctx-optimize`), on clicodemode v0.6.1. The code below is copied from it; elisions are marked.
 :::
 

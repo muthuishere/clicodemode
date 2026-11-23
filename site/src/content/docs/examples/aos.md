@@ -1,11 +1,11 @@
 ---
 title: "aos: 254 operations from a batch table"
-description: "How aos added `aos code` by registering every batch verb as an operation through its existing invoke path. Open PR."
+description: "How aos added `aos code` by registering every batch verb as an operation through its existing invoke path (aos v0.15.1)."
 sidebar:
   label: aos
 ---
 
-:::caution[Open PR, not released]
+:::note[Shipped]
 This integration shipped in [aos v0.15.1](https://github.com/muthuishere/aos/releases/tag/v0.15.1). The code below is copied from it (elisions marked).
 :::
 
