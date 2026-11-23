@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "clicodemode"
+version = "0.5.2"  # tracks the Go LibraryVersion on main (this branch predates it and still embeds 0.5.0)
+description = "Code Mode for Python CLIs: run agent-written JavaScript-like programs against your existing handlers, on the Go engine compiled to WebAssembly."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [{ name = "Muthukumaran Navaneethakrishnan" }]
+keywords = ["codemode", "cli", "agents", "mcp", "wasm", "click", "typer", "argparse"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries",
+  "Typing :: Typed",
+]
+# wasmtime-py is the only runtime dependency. "~=51.0" == ">=51.0,<52": one minor
+# line, because the compiled-module cache and the epoch API are tied to it.
+dependencies = ["wasmtime~=51.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "click>=8.1", "typer>=0.12"]
+dev = ["pytest>=8", "click>=8.1", "typer>=0.12", "mypy>=1.10", "build>=1.2"]
+
+[project.urls]
+Homepage = "https://github.com/muthuishere/clicodemode"
+Source = "https://github.com/muthuishere/clicodemode/tree/main/python"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clicodemode"]
+# the wasm is git-ignored; scripts/build_wasm.sh puts it here before `python -m build`
+artifacts = ["src/clicodemode/_codemode.wasm"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "examples", "scripts", "README.md", "LICENSE", "pyproject.toml"]
+artifacts = ["src/clicodemode/_codemode.wasm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.mypy]
+strict = true
+files = ["src/clicodemode"]
+python_version = "3.10"
