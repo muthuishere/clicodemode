@@ -76,11 +76,12 @@ If your own environment already lets you write code that makes tool calls
 Code Mode CLI as **one** program per CLI, not many commands:
 
 ```js
-// not: 25 separate processes, each re-reading config and re-authenticating
-// for (const p of pods) await $`kubectl get pod ${p} -o json`
+// not: one process per command, each starting the CLI and printing text
+// for (const l of labels) await $`ctx-optimize card ${l} --json`
 
-// yes: one process, typed operations, only the result comes back
-const r = await $`kubectl code run - --input ${JSON.stringify({ pods })} --json < prog.js`.json()
+// yes: one process, JSON operations, only the result comes back
+const r = await $`ctx-optimize code run - --input ${JSON.stringify({ labels })} --json < prog.js`.json()
+// prog.js: await Promise.all(input.labels.map(l => ops.ctx.card({ args: [l] })))
 ```
 
 - Pass data in with `--input JSON` (the program's global `input`); read the

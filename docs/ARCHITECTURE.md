@@ -121,7 +121,7 @@ access is host policy, never ambient.
 **Execution** (`codemode/exec`): permitted executables with argv arrays (no
 shell unless separately authorized), `execStream`, streaming JSONL/JSON/text/
 YAML/CSV transforms with backpressure and early cancellation:
-`exec(["kubectl","logs","-f",pod]).jsonl().filter(x => x.level === "ERROR").take(100).writeJSONL()`.
+`execStream(["tail","-f","app.log"]).jsonl().filter(x => x.level === "ERROR").take(100).writeJSONL()`.
 Processes and streams close on cancellation. `pmap(items, fn, {concurrency})`.
 
 **Workflows as JS primitives** (implemented in `js/workflow.go`, installed

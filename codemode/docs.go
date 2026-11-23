@@ -65,7 +65,7 @@ environment. shell("a | b") exists only where the host authorizes a shell.
 
 Streams are lazy pipelines; a terminal runs them and returns a Promise:
 
-    await execStream(["kubectl", "logs", pod])
+    await execStream(["tail", "-n", "10000", "app.log"])
       .jsonl().filter(x => x.level === "ERROR").take(100).writeJSONL()
 
 Sources: execStream(argv), stream(array). Transforms: lines, jsonl, csv

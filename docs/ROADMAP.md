@@ -22,13 +22,23 @@ Each step ships on its own, with tests.
    subset, steps as `<cli> code run-step ./module.js#export`, served by the
    `run-step` subcommand). Step refs come from export metadata recorded by
    the interpreter. Next: round-trip the YAML through WFNexus (item 6).
-5. **AOS batch adapter**: golden tests first (inside AOS), then the AOS-side
-   registration so JS calls wrap `cli.Invoke`. Old YAML byte-identical.
-6. **WFNexus plan adapter**: emitted plans validated by WFNexus's own parser.
+5. **AOS (done, aos#121)**: `aos code` registers every batch verb as an
+   operation through the same `cli.Invoke`; JSON-first results; `aos batch`
+   untouched (run-phase golden tests). Branch pending owner push.
+6. **WFNexus (done, wfnexus#187)**: exported plans pass WFNexus's parser and dry
+   run, and ran for real (outcomes via exit codes, step context via inline
+   `run:` assignments).
 7. **Caches (done)**: capability cache (version + fingerprint + auth context),
    compiled cache (program/import hashes + compiler + capability hash),
    `Engine.Cache` / `CODEMODE_CACHE_DIR`.
-8. **Optional MCP adapter**; generated per-CLI skill (done: `code skill`).
+8. **Optional MCP adapter (done)**; generated per-CLI skill (done: `code skill`,
+   grouped for large CLIs).
+9. **ctx-optimize (done, local branch)**: `ctx-optimize code` over its read-only
+   verbs with `cmdtree.WithJSONResult` and `WithFlagsLast`.
+
+Next candidates: a benchmark measuring model turns and tokens with a real agent,
+`code run --plan` with a host approval hook for external side effects,
+`code run --stats`, a `codemode init` scaffolder.
 
 Known interpreter gaps to close as needed: labelled statements, `switch`,
 regex, getters/setters, live module bindings, microtask ordering.

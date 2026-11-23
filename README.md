@@ -87,8 +87,10 @@ Command-tree adapters (`cmdtree.FromRunner`, `cmdtree.FromFlagSet`),
 capability and compiled-plan caches, `code skill` and `code run-step`.
 Optional MCP server (`adapters/mcp`).
 
-**Not yet** (see [docs/ROADMAP.md](docs/ROADMAP.md)): workflow primitives, AOS
-batch adapter (proposal parked for owner approval) and WFNexus plan validation.
+**In use**: [aos](https://github.com/muthuishere/aos) (`aos code`, 254
+operations) and [ctx-optimize](https://github.com/muthuishere/ctx-optimize)
+(`ctx-optimize code`) embed it; WFNexus runs exported plans (validated with real
+runs). Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 Try it: `go run ./cmd/democli code help`.
 
@@ -96,24 +98,74 @@ Try it: `go run ./cmd/democli code help`.
 
 [Claude Code's Code Mode](https://code.claude.com/docs/en/code-mode) puts the
 code loop in the **agent**: one JavaScript snippet makes many tool calls, so
-model round trips drop. When that snippet calls a CLI many times
-(`` $`mycli ...` `` x 25) it still starts 25 processes. CLI CodeMode puts the
-loop in the **CLI**. The two compose:
+model round trips drop. But each CLI command that snippet runs
+(`` $`aos window list --json` ``) is still a separate process that starts the CLI,
+parses its arguments and prints text the snippet has to parse back.
+
+CLI CodeMode puts the loop in the **CLI**: one `code run`, one process, and the
+operations return JSON objects in-process. The two compose:
 
 ```js
 // inside Claude Code Code Mode: one process per CLI, not one per command
-const r = await $`mycli code run - --input ${JSON.stringify({ ids })} --json < prog.js`.json()
+const r = await $`aos code run - --input ${JSON.stringify(input)} --json < prog.js`.json()
 ```
 
-| per call, same small operation (demo CLI, ~4 ms startup) | time |
-|---|---|
-| one process per call (`` $`mycli ...` ``) | 4.68 ms |
-| one `code_run` call to a persistent `democli-mcp` session | **0.12 ms** |
-| 25 parallel calls: 25 processes vs one `code run` | 85 ms vs **59 ms** |
+Model round trips are the same either way (one). What changes is processes,
+CPU, and how much raw output flows back.
 
-Real CLIs that read config, authenticate or open connections on start gain
-more; that is not measured here. Check the build on a runner's `PATH` with
-`mycli code version`.
+### Measured on real CLIs
+
+Same task both ways, medians, Apple Silicon. "Code Mode style" = one process per
+command, the way a Claude Code Code Mode snippet calls a CLI today.
+
+**ctx-optimize**: query, then `card` on the top 5 hits, then `change_plan`
+(7 calls):
+
+| | wall | CPU | bytes back |
+|---|---|---|---|
+| 7 processes, sequential | 68 ms | 167 ms | 28,273 |
+| 7 processes, cards in parallel | 47 ms | 164 ms | 28,273 |
+| **`ctx-optimize code run`, 1 process** | **33 ms** | **137 ms** | **169** |
+
+**aos** (each `aos` process takes ~66 ms to start):
+
+| | wall | CPU | bytes back |
+|---|---|---|---|
+| 24 read-only calls, 24 processes sequential | 1,644 ms | 1,228 ms | |
+| 24 calls, 24 processes in parallel | 217 ms | 1,493 ms | |
+| **24 calls, `aos code run`, 1 process** | **217 ms** | **1,012 ms** | |
+| machine snapshot (4 calls), 4 processes parallel | 196 ms | 280 ms | 8,612 |
+| **machine snapshot, `aos code run`** | 220 ms | **260 ms** | **158** |
+
+The program for the snapshot reads objects directly:
+
+```js
+const [wins, procs, disks, apps] = await Promise.all([
+  ops["window-list"](), ops["process-list"]({ sort: "cpu", top: "5" }),
+  ops["disk-list"](), ops["app-list"]({ running: true }),
+])
+;({ windows: wins.length, topCpu: procs.map(p => p.name), disks: disks.length, runningApps: apps.length })
+```
+
+So: against one process per command run sequentially, CLI CodeMode is several
+times faster; against the same commands spawned in parallel the wall time is
+about even, with less CPU and a tiny answer instead of the raw output. Calling
+the same CLI repeatedly from one session through its persistent MCP server costs
+0.12 ms per call vs 4.68 ms for a new process (demo CLI).
+
+### JSON objects, not text
+
+Operations return JSON values; failures throw. A host wrapping existing
+commands gets this with one option:
+
+```go
+reg.MustRegister(cmdtree.FromRunner("ctx.query", "Find symbols", runQuery,
+    cmdtree.WithJSONResult("--json"), // append --json, return the parsed value, throw on failure
+    cmdtree.WithFlagsLast(),           // for commands that read positionals first
+    cmdtree.WithSideEffects(codemode.SideEffectNone)))
+```
+
+Check which build a runner sees with `mycli code version`.
 
 ## Performance
 
