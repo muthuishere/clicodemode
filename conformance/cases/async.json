@@ -44,8 +44,7 @@
     2
    ],
    "exit": 0
-  },
-  "known_deviation": true
+  }
  },
  {
   "id": "async-promise-all-order",

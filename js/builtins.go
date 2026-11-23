@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 func bi(name string, fn func(r *Runner, this Value, args []Value) (Value, error)) *Builtin {
@@ -494,13 +495,15 @@ func (r *Runner) getMember(obj Value, key string, at Node) (Value, error) {
 		return Undefined, nil
 	case string:
 		if key == "length" {
-			return float64(len([]rune(o))), nil
+			return float64(strLen(o)), nil
 		}
 		if isArrayIndex(key) {
-			rs := []rune(o)
 			i := int(toNumber(key))
-			if i < len(rs) {
-				return string(rs[i]), nil
+			if i < len(o) && isASCII(o) {
+				return o[i : i+1], nil
+			}
+			if u := strUnits(o); i < len(u) {
+				return unitsStr(u[i : i+1]), nil
 			}
 			return Undefined, nil
 		}
@@ -904,7 +907,7 @@ func stringMethod(s string, key string) *Builtin {
 			if i < 0 {
 				return -1.0
 			}
-			return float64(len([]rune(s[:i])))
+			return float64(unitIndexOfByte(s, i))
 		})
 	case "split":
 		return str(key, func(a []Value) Value {
@@ -917,8 +920,8 @@ func stringMethod(s string, key string) *Builtin {
 			parts := strings.Split(s, toString(sep))
 			if toString(sep) == "" {
 				parts = nil
-				for _, r := range s {
-					parts = append(parts, string(r))
+				for _, c := range strUnits(s) {
+					parts = append(parts, unitsStr([]uint16{c}))
 				}
 			}
 			for _, p := range parts {
@@ -936,8 +939,7 @@ func stringMethod(s string, key string) *Builtin {
 		})
 	case "slice", "substring":
 		return str(key, func(a []Value) Value {
-			rs := []rune(s)
-			n := len(rs)
+			n := strLen(s)
 			st, en := relIndex(arg(a, 0), n, 0), relIndex(arg(a, 1), n, n)
 			if key == "substring" {
 				st = int(math.Max(0, math.Min(float64(n), toNumber(arg(a, 0)))))
@@ -954,7 +956,7 @@ func stringMethod(s string, key string) *Builtin {
 			if en < st {
 				return ""
 			}
-			return string(rs[st:en])
+			return strSlice(s, st, en)
 		})
 	case "padStart", "padEnd":
 		return str(key, func(a []Value) Value {
@@ -963,12 +965,12 @@ func stringMethod(s string, key string) *Builtin {
 			if p := arg(a, 1); p != Undefined {
 				pad = toString(p)
 			}
-			n := len([]rune(s))
+			n := strLen(s)
 			if w <= n || pad == "" {
 				return s
 			}
-			fill := strings.Repeat(pad, (w-n)/len([]rune(pad))+1)
-			fill = string([]rune(fill)[:w-n])
+			fill := strings.Repeat(pad, (w-n)/strLen(pad)+1)
+			fill = strSlice(fill, 0, w-n)
 			if key == "padStart" {
 				return fill + s
 			}
@@ -984,24 +986,45 @@ func stringMethod(s string, key string) *Builtin {
 		})
 	case "charAt":
 		return str(key, func(a []Value) Value {
-			rs := []rune(s)
 			i := int(toNumber(arg(a, 0)))
-			if i < 0 || i >= len(rs) {
+			if i < 0 || i >= strLen(s) {
 				return ""
 			}
-			return string(rs[i])
+			return strSlice(s, i, i+1)
+		})
+	case "charCodeAt":
+		return str(key, func(a []Value) Value {
+			u := strUnits(s)
+			i := int(toNumber(arg(a, 0)))
+			if i < 0 || i >= len(u) {
+				return math.NaN()
+			}
+			return float64(u[i])
+		})
+	case "codePointAt":
+		return str(key, func(a []Value) Value {
+			u := strUnits(s)
+			i := int(toNumber(arg(a, 0)))
+			if i < 0 || i >= len(u) {
+				return Undefined
+			}
+			c := rune(u[i])
+			if c >= 0xD800 && c < 0xDC00 && i+1 < len(u) && u[i+1] >= 0xDC00 && u[i+1] < 0xE000 {
+				return float64(utf16.DecodeRune(c, rune(u[i+1])))
+			}
+			return float64(c)
 		})
 	case "at":
 		return str(key, func(a []Value) Value {
-			rs := []rune(s)
+			n := strLen(s)
 			i := int(toNumber(arg(a, 0)))
 			if i < 0 {
-				i += len(rs)
+				i += n
 			}
-			if i < 0 || i >= len(rs) {
+			if i < 0 || i >= n {
 				return Undefined
 			}
-			return string(rs[i])
+			return strSlice(s, i, i+1)
 		})
 	case "toString":
 		return str(key, func([]Value) Value { return s })

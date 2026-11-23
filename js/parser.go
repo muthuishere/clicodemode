@@ -1205,6 +1205,9 @@ func (p *parser) primary() (Node, error) {
 		p.i++
 		return p.templateLit(t)
 	case tIdent:
+		if t.val == "eval" {
+			return nil, p.errHere("`eval` is not supported; nothing is evaluated from strings")
+		}
 		if t.val == "async" && p.peekTok(1).val == "function" {
 			p.i++
 			return p.function(true)
@@ -1246,6 +1249,8 @@ func (p *parser) primary() (Node, error) {
 			return p.arrayLit()
 		case "{":
 			return p.objectLit()
+		case "/", "/=":
+			return nil, p.errHere("regex literals are not supported; use string methods such as includes, startsWith, split and replaceAll")
 		}
 	case tEOF:
 		return nil, p.errHere("unexpected end of input")

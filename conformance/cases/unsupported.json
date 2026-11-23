@@ -177,8 +177,7 @@
     }
    ],
    "exit": 2
-  },
-  "known_deviation": true
+  }
  },
  {
   "id": "lang2-eval",
@@ -198,8 +197,7 @@
     }
    ],
    "exit": 2
-  },
-  "known_deviation": true
+  }
  },
  {
   "id": "lang2-multiline-position",

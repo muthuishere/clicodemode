@@ -127,11 +127,8 @@ func confRegistry(ops []confOp, calls map[string]*atomic.Int32, inFlight, peak *
 				if len(o.Returns) == 0 {
 					return nil, nil
 				}
-				var v any
-				if err := json.Unmarshal(o.Returns, &v); err != nil {
-					return nil, err
-				}
-				return v, nil
+				// JSON text from a host bridge keeps its key order (LANG-6).
+				return OrderedJSON(o.Returns), nil
 			}
 		}
 		if err := reg.Register(op); err != nil {

@@ -1,24 +1,28 @@
 # Known deviations of the Go reference engine
 
 Each entry is a conformance case whose fixture follows `docs/SPEC.md` and real
-JavaScript (checked against Node 24), but which the Go engine fails. The case
-carries `"known_deviation": true`; `go test ./codemode/ -run Conformance` skips
-it. Run them anyway with `CONFORMANCE_RUN_DEVIATIONS=1`. A port should treat
-the fixture as correct and pass these cases; `run-js.mjs` reports a pass as
-`FIXED` and a failure as `DEVIATION` (non-fatal unless `--strict`).
+JavaScript (checked against Node 24), but which the Go engine once failed. A
+failing case would carry `"known_deviation": true`; `go test ./codemode/ -run
+Conformance` skips such a case unless `CONFORMANCE_RUN_DEVIATIONS=1` is set.
+`run-js.mjs` reports a pass of a flagged case as `FIXED` and a failure as
+`DEVIATION` (non-fatal unless `--strict`).
 
-Status of the fix is "open" for all entries below.
+All eight deviations are fixed in library version 0.6.0 (issues #1 to #5),
+so no case carries `"known_deviation"` any more and
+`CONFORMANCE_RUN_DEVIATIONS=1 go test ./codemode -run Conformance` has
+nothing extra to run. The table is kept as the record of what each case
+caught. A port should treat every fixture as correct.
 
-| case id | spec | fixture expects | Go actually | who is right |
-|---|---|---|---|---|
-| `async-microtask-order` | LANG-1 | `[1, 2]`: `Promise.resolve().then(f1)` queued before `(async () => { await null; f2() })()`, jobs run FIFO, as in JS | `[2, 1]` in about 14 of 15 runs, so it is also nondeterministic: the await continuation can overtake an earlier `.then` job | fixture. Promise jobs must run in FIFO order on one queue; the Go engine lets the await continuation race the `.then` job. The WASM build in `npm/dist` produced `[1, 2]` every time. |
-| `lang1-number-small-decimal-string` | LANG-1 | `String(0.000001)` is `"0.000001"` (JS switches to exponent form only below 1e-6, so `String(1e-7)` is `"1e-7"`) | `"1e-6"` | fixture. Number-to-string uses a Go `%g`-style cutoff. |
-| `lang1-number-large-decimal-string` | LANG-1 | `String(123456789.5)` is `"123456789.5"`, `String(1234567.25)` is `"1234567.25"` | `"1.234567895e+8"`, `"1.23456725e+6"` | fixture. Non-integers below 1e21 must print positionally. This one affects any program that builds strings or JSON text from fractional numbers over about 1e6 (`JSON.stringify`/template output). |
-| `lang1-string-length-utf16` | LANG-1 | `"😀".length === 2`, `"a😀".length === 3` (UTF-16 code units) | `1` and `2` (counts code points) | fixture, as normal JavaScript semantics (LANG-1) require. Strings outside the BMP are the only case affected; the BMP cases (`"日本".length`) agree and are in `lang1-unicode-strings`. |
-| `lang6-key-order-input` | LANG-6, CLI-10 | `input` of `{"b":1,"a":2,"1":3}` iterates as `1,b,a` (integer keys ascending, then insertion order = document order) | `1,a,b`: the `--input` JSON is decoded into a Go `map`, so insertion order is lost and keys come back sorted | fixture. Input must keep document order. |
-| `lang6-key-order-op-result` | LANG-6, OP-1 | a handler result `{"b":1,"a":2,"1":3}` iterates as `1,b,a` | `1,a,b` (Go `map[string]any` handler results; also normalised through `json.Marshal`) | fixture for hosts that can express order (a JS handler returns an ordered object). For the Go host the order is not representable in `map[string]any`; if that is accepted, Go hosts could be exempted by weakening this case, but the JS port must preserve order. |
-| `lang2-regex-literal` | LANG-2 | a parse error whose message names the construct (contains `regex`) | `syntax error: unexpected "/"` at the right line and column but without naming regex | fixture; spec requires the message to name the construct. |
-| `lang2-eval` | LANG-2, CAP-4 | `eval("1 + 1")` is a parse error and nothing runs (`check` gives one diagnostic, exit 2) | `check` reports no diagnostics; `run` starts the program and fails at run time with `uncaught ReferenceError: eval is not defined` (exit 1) | fixture. LANG-2 lists `eval` among constructs that are parse errors, and `language.unsupported` advertises it. |
+| case id | issue | status | what was wrong, and the fix |
+|---|---|---|---|
+| `async-microtask-order` | #3 | Fixed | Await continuations and `.then` jobs each waited on their own goroutine for the interpreter lock, so an await could overtake an earlier `.then` job (`[2, 1]`, nondeterministic). The interpreter lock is now a FIFO queue (`fifoLock`) and a job takes its place in it when its promise settles (or at once if already settled), and a job settles its own result promise before releasing the lock. One deterministic job queue, as in JS; verified with `-count=300` and `-race`. |
+| `lang1-number-small-decimal-string` | #1 | Fixed | Number-to-string used Go `%g` cutoffs. It now lays out the shortest round-trip digits as ECMAScript `Number::toString`: positional for `1e-6 <= abs(x) < 1e21`, exponent form otherwise (`1e-7`, `1e+21`, `-0` is `"0"`). |
+| `lang1-number-large-decimal-string` | #1 | Fixed | Same fix: `String(123456789.5)` is `"123456789.5"`. |
+| `lang1-string-length-utf16` | #4 | Fixed | Strings are still Go UTF-8 strings, but `length`, indexing, `slice`, `substring`, `charAt`, `at`, `indexOf`, `split("")`, `padStart` and `padEnd` count UTF-16 code units (pure-ASCII strings keep a byte-indexed fast path). `charCodeAt` and `codePointAt` were added. A lone surrogate (half an emoji) is kept as its WTF-8 bytes and rejoins when concatenated with `+`. `for...of`, spread and `Array.from` still iterate code points, as in JS. |
+| `lang6-key-order-input` | #2 | Fixed | `--input` / `RunWithInput` JSON is decoded by an ordered token walk (`js.ParseJSON`) instead of into a Go `map`. |
+| `lang6-key-order-op-result` | #2 | Fixed, with a Go-host limit that is intentional | A handler that returns JSON text as `codemode.OrderedJSON(text)` (or a `json.RawMessage`) keeps document order; structs keep field order. A Go `map[string]any` result has no order to keep, so its keys arrive sorted (integer-like keys first, then lexicographic), which is what inserting the sorted keys gives under the JS ordering rule. That is the documented Go-host behaviour, not a bug. Bridges (WASM, WASI) whose operations return JSON text must return `codemode.OrderedJSON(text)`. |
+| `lang2-regex-literal` | #5 | Fixed | A regex literal is a parse error whose message says `regex literals are not supported`, at the position of the `/`. |
+| `lang2-eval` | #5 | Fixed | `eval` is a parse error (`check` exits 2, nothing runs). |
 
 ## Notes on things that are not deviations
 
