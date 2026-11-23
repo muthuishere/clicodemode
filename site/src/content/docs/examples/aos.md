@@ -1,12 +1,12 @@
 ---
 title: "aos: 254 operations from a batch table"
-description: "How aos added `aos code` by registering every batch verb as an operation through its existing invoke path (aos v0.15.1)."
+description: "How aos added `aos code` by registering every batch verb as an operation through its existing invoke path (aos v0.15.2)."
 sidebar:
   label: aos
 ---
 
 :::note[Shipped]
-This integration shipped in [aos v0.15.1](https://github.com/muthuishere/aos/releases/tag/v0.15.1). The code below is copied from it (elisions marked).
+This integration shipped in [aos v0.15.2](https://github.com/muthuishere/aos/releases/tag/v0.15.2). The code below is copied from it (elisions marked).
 :::
 
 aos drives the machine (windows, display, processes, files, capture). It already had `aos batch`, a YAML runner over a table of verbs (`batchVerbs`). Code Mode reuses that table.
@@ -111,6 +111,6 @@ Against parallel spawning the wall time is even (the snapshot is slightly slower
 
 ## Sources
 
-- Release: [aos v0.15.1](https://github.com/muthuishere/aos/releases/tag/v0.15.1)
+- Release: [aos v0.15.2](https://github.com/muthuishere/aos/releases/tag/v0.15.2)
 - Registration: [`internal/groups/code.go`](https://github.com/muthuishere/aos/blob/main/internal/groups/code.go)
 - Agent skill: `internal/skill/assets/aos/references/code.md` on the same branch

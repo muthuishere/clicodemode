@@ -88,7 +88,7 @@ capability and compiled-plan caches, `code skill` and `code run-step`.
 Optional MCP server (`adapters/mcp`).
 
 **Proven on real CLIs**: aos (`aos code`, 254 operations) and ctx-optimize
-(`ctx-optimize code`) (shipped in [aos v0.15.1](https://github.com/muthuishere/aos/releases/tag/v0.15.1) and [ctx-optimize v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0)); WFNexus
+(`ctx-optimize code`) (shipped in [aos v0.15.2](https://github.com/muthuishere/aos/releases/tag/v0.15.2) and [ctx-optimize v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0)); WFNexus
 runs exported plans (validated with real runs). Roadmap:
 [docs/ROADMAP.md](docs/ROADMAP.md).
 

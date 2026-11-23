@@ -188,12 +188,12 @@ $ echo $?
 	<section class="band" aria-labelledby="h-real">
 		<p class="kicker">02 / How we integrated</p>
 		<h2 id="h-real">Two real CLIs, real code</h2>
-		<p class="lede">aos ships it in v0.15.1 and ctx-optimize in v0.16.0. The Go excerpts are copied from that code; where code is left out, the excerpt says so.</p>
+		<p class="lede">aos ships it in v0.15.2 and ctx-optimize in v0.16.0. The Go excerpts are copied from that code; where code is left out, the excerpt says so.</p>
 		<Tabs>
 			<TabItem label="aos  (254 operations)">
 				<div class="int-meta">
 					<span class="status">shipped</span>
-					<a href="https://github.com/muthuishere/aos/releases/tag/v0.15.1">aos v0.15.1</a>
+					<a href="https://github.com/muthuishere/aos/releases/tag/v0.15.2">aos v0.15.2</a>
 									</div>
 				<p>aos already had a batch table of every verb. <code>aos code</code> registers one operation per batch verb, and each handler calls the same <code>cli.Invoke</code> path, so the two can never disagree about what a command does. Results are JSON-first; a failing command throws.</p>
 				<Code code={aosGo} lang="go" title="mount and register" />
