@@ -1,7 +1,7 @@
 # CLI CodeMode specification
 
 Spec version `codemode/v0` (the `spec` field of `code capabilities`).
-Implementation: this repository, v0.4.x. Keywords MUST, MUST NOT, SHOULD and
+Implementation: this repository, v0.5.x. Keywords MUST, MUST NOT, SHOULD and
 MAY are normative. Every requirement has an ID; `codemode/spec_test.go`
 checks the CLI-level ones end to end and names the test covering each of the
 others. A change that breaks a requirement is a breaking change.

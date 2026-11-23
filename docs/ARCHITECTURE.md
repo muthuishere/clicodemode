@@ -9,9 +9,9 @@
 | `adapters/cmdtree/` | Wraps existing commands (`func(ctx, args, stdout, stderr) error`, stdlib `flag.FlagSet`) as operations; imports `codemode`, never the reverse. |
 | `cmd/democli/` | Reference host showing how an existing CLI embeds it. |
 
-Planned: `codemode/exec` (processes + streams), `codemode/workflow`
-(workflow primitives and portable plans), `adapters/aosbatch`,
-`adapters/wfnexus`, `adapters/mcp` (optional).
+Also: `codemode/exec.go` (processes + streams under `ExecPolicy`), workflow
+primitives in `js/workflow.go` (WFNexus export), `adapters/mcp` (optional
+stdio MCP server). Legacy AOS batch YAML stays in AOS, untouched.
 
 ## Operations
 
@@ -112,13 +112,13 @@ with did-you-mean). Run-time errors carry the throw site. Exit codes: 0 ok,
 ## Security stance
 
 In-process interpreter, not a hostile-code sandbox. Programs reach the
-outside world only through registered operations (and, later, explicitly
+outside world only through registered operations (and explicitly
 permitted executables), gated by `Policy.Allow`. File/env/secret/process
 access is host policy, never ambient.
 
-## Planned layers (design carried from the spec)
+## Execution and workflow layers
 
-**Execution** (`codemode/exec`): permitted executables with argv arrays (no
+**Execution** (implemented in `codemode/exec.go`, `js/stream.go`): permitted executables with argv arrays (no
 shell unless separately authorized), `execStream`, streaming JSONL/JSON/text/
 YAML/CSV transforms with backpressure and early cancellation:
 `execStream(["tail","-f","app.log"]).jsonl().filter(x => x.level === "ERROR").take(100).writeJSONL()`.

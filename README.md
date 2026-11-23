@@ -72,7 +72,7 @@ export default summarize(h, disk)
 
 ## Status
 
-v0.3. **Done**: operation registry, describe/operations/
+v0.5.2. **Done**: operation registry, describe/operations/
 capabilities with fingerprint, the interpreter (lexer, Pratt parser,
 evaluator: const/let, objects/arrays, destructuring, spread, closures,
 try/catch/finally, async/await, Promises incl. all/race/allSettled/any,
