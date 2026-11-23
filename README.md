@@ -87,10 +87,10 @@ Command-tree adapters (`cmdtree.FromRunner`, `cmdtree.FromFlagSet`),
 capability and compiled-plan caches, `code skill` and `code run-step`.
 Optional MCP server (`adapters/mcp`).
 
-**In use**: [aos](https://github.com/muthuishere/aos) (`aos code`, 254
-operations) and [ctx-optimize](https://github.com/muthuishere/ctx-optimize)
-(`ctx-optimize code`) embed it; WFNexus runs exported plans (validated with real
-runs). Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
+**Proven on real CLIs**: aos (`aos code`, 254 operations) and ctx-optimize
+(`ctx-optimize code`) on integration branches, pending their releases; WFNexus
+runs exported plans (validated with real runs). Roadmap:
+[docs/ROADMAP.md](docs/ROADMAP.md).
 
 Try it: `go run ./cmd/democli code help`.
 
