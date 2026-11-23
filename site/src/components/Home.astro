@@ -6,9 +6,11 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const href = (p: string) => `${base}${p}`;
 const GH = 'https://github.com/muthuishere/clicodemode';
 
-const threeProcs = `aos window move Safari --zone=1A --monitor=2
-aos display brightness 70
-aos open https://youtube.com`;
+const threeProcs = `await Promise.all([
+  $\`aos window move Safari --zone=1A --monitor=2\`.nothrow(),
+  $\`aos display brightness 70\`.nothrow(),
+  $\`aos open https://youtube.com\`.nothrow(),
+])`;
 
 const oneProgram = `await Promise.all([
   ops["window-move"]({ args: ["Safari"], zone: "1A", monitor: 2 }),
@@ -158,9 +160,9 @@ $ echo $?
 		<p class="lede">Move a window, set the brightness, open a page. The work is the same. What changes is how many times the CLI boots.</p>
 		<div class="split">
 			<div class="col">
-				<div class="col-h"><span class="tag">3 processes</span> one per command</div>
-				<Code code={threeProcs} lang="sh" title="shell" wrap />
-				<p class="note">Each line starts <code>aos</code>, parses arguments, runs one command and prints text the caller parses back. The README measures about 66 ms per <code>aos</code> start.</p>
+				<div class="col-h"><span class="tag">3 processes</span> agent Code Mode, one per <code>$</code> call</div>
+				<Code code={threeProcs} lang="js" title="Claude Code Code Mode program" wrap />
+				<p class="note">The agent writes one program, but each <code>$`aos …`</code> starts <code>aos</code> again: it parses arguments, runs one command and prints text the program parses back. The README measures about 66 ms per <code>aos</code> start.</p>
 			</div>
 			<div class="col">
 				<div class="col-h"><span class="tag tag-accent">1 process</span> <code>aos code run</code></div>
@@ -168,7 +170,8 @@ $ echo $?
 				<p class="note">Checked before it ran: <code>aos code check</code> reports ok, 3 operations. The calls run in parallel inside one process, and the result is JSON.</p>
 			</div>
 		</div>
-		<div class="diagram"><ProcessDiagram /></div>
+		<div class="diagram"><ProcessDiagram />
+		<p class="note">Observed on 2026-11-23 in Claude Code 2.1.330 with Code Mode on: its program ran the three commands in parallel as three aos processes (three PIDs in a wrapper log). <code>aos code run</code> did the same actions as one process.</p></div>
 	</section>
 
 	<section class="band" aria-labelledby="h-real">

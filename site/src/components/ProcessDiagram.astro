@@ -4,15 +4,17 @@
 <figure class="pd" aria-labelledby="pd-cap">
 	<div class="pd-scroll" role="region" tabindex="0" aria-label="Diagram, scroll horizontally on small screens"><svg viewBox="0 0 880 300" role="img" aria-labelledby="pd-title pd-desc">
 		<title id="pd-title">Three processes versus one</title>
-		<desc id="pd-desc">Left: the agent starts aos three times; each process boots, parses its arguments, runs one command and prints text. Right: the agent starts aos once with code run; one process calls three registered operations in parallel and returns one JSON value.</desc>
+		<desc id="pd-desc">Left: the agent runs one JavaScript program (as in Claude Code Code Mode) whose shell calls still start aos three times; each process boots, parses its arguments, runs one command and prints text. Right: the agent starts aos once with code run; one process calls three registered operations in parallel and returns one JSON value.</desc>
 		<defs>
 			<marker id="pd-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="pd-fill-muted"/></marker>
 		</defs>
 
 		<!-- left panel -->
-		<text x="20" y="26" class="pd-h">Today: one process per command</text>
+		<text x="20" y="26" class="pd-h">Agent Code Mode: one program, three processes</text>
 		<rect x="20" y="44" width="92" height="232" rx="8" class="pd-agent"/>
-		<text x="66" y="166" class="pd-lbl" text-anchor="middle">agent</text>
+		<text x="66" y="150" class="pd-lbl" text-anchor="middle">agent</text>
+		<text x="66" y="172" class="pd-tiny" text-anchor="middle">JS program</text>
+		<text x="66" y="188" class="pd-tiny" text-anchor="middle">$`aos …` ×3</text>
 		<g class="pd-procs">
 			{[0, 1, 2].map((i) => {
 				const y = 52 + i * 78;
@@ -56,7 +58,7 @@
 		))}
 		<text x="622" y="254" class="pd-tiny pd-ok">one JSON value back</text>
 	</svg></div>
-	<figcaption id="pd-cap">Same three actions. Left: three starts, three argument parses, three text outputs. Right: one start, one checked program, operations called in parallel inside the process.</figcaption>
+	<figcaption id="pd-cap">Same three actions. Left: the agent writes one program, but each <code>$`aos …`</code> call is still a new aos process with its own start, parse and text output. Right: one start, one checked program, operations called in parallel inside the process.</figcaption>
 </figure>
 
 <style>
