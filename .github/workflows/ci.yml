@@ -1,3 +1,4 @@
+# Draft: never run. Action tags are major versions and have not been exercised on GitHub.
 name: ci
 on:
   push:
@@ -34,7 +35,7 @@ jobs:
         with:
           node-version: 22
       - run: bash scripts/build-wasm.sh
-      - run: npm install && npm test
+      - run: npm ci && npm test
         working-directory: npm
       - run: node conformance/run-js.mjs npm/dist/index.js
 

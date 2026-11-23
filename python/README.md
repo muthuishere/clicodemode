@@ -109,6 +109,19 @@ python examples/click_cli.py code run -e 'await call("inventory.add", {sku: "app
 * **Isolation**: every `CodeMode` has its own WebAssembly instance and its own operations. The compiled module is shared per process.
 * **exec / execStream / shell are denied** (the guest has no processes); programs get a "not permitted" diagnostic or error.
 
+### Limitations at a glance
+
+| Area | Status |
+|---|---|
+| `exec` / `execStream` / `shell` | denied (the guest has no processes) |
+| Module imports | not available (no filesystem in the guest) |
+| Handlers | synchronous; a running handler cannot be pre-empted, so timeout and cancel apply after it returns. This is **partial** coverage of SPEC LIM-2/LIM-3; a test (`test_slow_handler_is_not_cut_off_by_timeout`) pins it so nobody relies on it |
+| Click / Typer | leaf commands only; group callbacks and group-level options do not run |
+| argparse | leaf (sub-)parsers become operations, nested sub-parsers included; options on a parent parser that precede the sub-command do not apply |
+| Parallelism | `Promise.all` calls are answered one after another by the host |
+| Startup | first engine in a process about 300 ms (compiling the module), later engines about 6 ms. Reuse **one engine per process** in a long-lived host |
+| Security | the Go engine owns parsing, semantics and portable validation (syntax, static checks, operation-input schemas). Authorization and filesystem/path/exec security are enforced by your Python host (`Policy.allow`, handler code); WebAssembly does not sandbox them |
+
 ### Differences from native Go
 
 No claim of parity. Known differences: no module imports (no filesystem in the guest); CPU-bound code is slower (a 1M-iteration loop took ~0.5 s here); handlers are sync Python, so a blocked handler cannot be cancelled mid-call; `exec`/`shell` are denied; key order of operation results and `input` is not preserved by the Go engine (fixture `lang6-*`); the engine's own known deviations (conformance `known_deviation`) apply as they do in Go; only one engine per WASM instance, started lazily and restarted after registration changes or interruption.

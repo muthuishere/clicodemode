@@ -269,6 +269,28 @@ def test_cancel_applies_after_running_handler_returns() -> None:
     cm.close()
 
 
+def test_slow_handler_is_not_cut_off_by_timeout() -> None:
+    """Documented limit (SPEC LIM-2/LIM-3 partly met): a Python handler that is
+    executing cannot be pre-empted, so a timeout only fires after it returns.
+    Nobody should rely on the timeout to interrupt a blocked handler."""
+    cm = make()
+    finished = threading.Event()
+
+    def slow(a):
+        time.sleep(0.8)
+        finished.set()
+        return "done"
+
+    cm.register(Operation("s.slow"), slow)
+    t = time.perf_counter()
+    r = cm.run('const v = await call("s.slow", {}); await sleep(0); v', timeout=0.2)
+    took = time.perf_counter() - t
+    assert finished.is_set()  # the handler ran to completion despite the 0.2 s timeout
+    assert took >= 0.8  # the run was held for the whole handler
+    assert not r.ok and "timeout" in r.error  # timeout fires once the handler returns
+    cm.close()
+
+
 def test_limits_max_steps_enforced() -> None:
     cm = make(limits=Limits(max_steps=10_000))
     r = cm.run("let i = 0; while (true) { i++ }")
