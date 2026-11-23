@@ -24,7 +24,7 @@ Each step ships on its own, with tests.
    the interpreter. Next: round-trip the YAML through WFNexus (item 6).
 5. **AOS (done, aos#121)**: `aos code` registers every batch verb as an
    operation through the same `cli.Invoke`; JSON-first results; `aos batch`
-   untouched (run-phase golden tests). Open PR: aos#123.
+   untouched (run-phase golden tests). Shipped in aos v0.15.1 (aos#123).
 6. **WFNexus (done, wfnexus#187)**: exported plans pass WFNexus's parser and dry
    run, and ran for real (outcomes via exit codes, step context via inline
    `run:` assignments).

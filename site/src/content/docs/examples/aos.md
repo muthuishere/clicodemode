@@ -6,7 +6,7 @@ sidebar:
 ---
 
 :::caution[Open PR, not released]
-This integration is [muthuishere/aos#123](https://github.com/muthuishere/aos/pull/123) on branch `feat/aos-code-json`. The code below is copied from that branch (elisions marked); it may change before merge.
+This integration shipped in [aos v0.15.1](https://github.com/muthuishere/aos/releases/tag/v0.15.1) (merged as [aos#123](https://github.com/muthuishere/aos/pull/123)). The code below is copied from it (elisions marked).
 :::
 
 aos drives the machine (windows, display, processes, files, capture). It already had `aos batch`, a YAML runner over a table of verbs (`batchVerbs`). Code Mode reuses that table.
