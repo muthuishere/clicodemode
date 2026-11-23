@@ -72,6 +72,8 @@ type config struct {
 	jsonFlag    string // set by WithJSONResult
 	jsonResult  bool
 	flagsLast   bool // set by WithFlagsLast
+	validate    func(args []string) error
+	checkResult func(args []string, stdout []byte) error
 }
 
 // WithFlagSet declares the command's flags: each becomes an optional input
@@ -109,6 +111,22 @@ func WithJSONResult(flag string) Option {
 // (`query "terms" --json`). The default is flags first, as stdlib flag.Parse
 // requires.
 func WithFlagsLast() Option { return func(c *config) { c.flagsLast = true } }
+
+// WithValidate runs fn on the final argv before the command runs (after
+// flags and WithJSONResult's flag are added). A non-nil error rejects the
+// call and the command never runs. Use it for the checks your CLI's own front
+// door does that the wrapped function skips: unknown flags, bad values.
+func WithValidate(fn func(args []string) error) Option {
+	return func(c *config) { c.validate = fn }
+}
+
+// WithCheckResult runs fn after a successful run with the argv and captured
+// stdout. A non-nil error rejects the call. Use it when the command reports a
+// soft failure only on stderr, which a program never sees (for example, a
+// fuzzy match that resolved to a different item).
+func WithCheckResult(fn func(args []string, stdout []byte) error) Option {
+	return func(c *config) { c.checkResult = fn }
+}
 
 // WithMaxOutput caps captured stdout and stderr each (default 8 MiB).
 func WithMaxOutput(n int) Option { return func(c *config) { c.maxOutput = n } }
@@ -152,7 +170,17 @@ func FromRunner(name, desc string, run Runner, opts ...Option) codemode.Operatio
 					argv = append([]string{cfg.jsonFlag}, argv...) // flags before positionals, as flag.Parse needs
 				}
 			}
+			if cfg.validate != nil {
+				if err := cfg.validate(argv); err != nil {
+					return nil, err
+				}
+			}
 			res := invoke(ctx, run, argv, cfg.maxOutput)
+			if cfg.checkResult != nil && res["ok"] == true {
+				if err := cfg.checkResult(argv, []byte(res["stdout"].(string))); err != nil {
+					return nil, err
+				}
+			}
 			if !cfg.jsonResult {
 				return res, nil
 			}

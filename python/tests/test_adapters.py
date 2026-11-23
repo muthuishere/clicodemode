@@ -48,10 +48,10 @@ def test_register_function_schema_and_call(cm: CodeMode) -> None:
 
 def test_register_function_unknown_and_missing_args_are_catchable(cm: CodeMode) -> None:
     cm.register_function("util.f", lambda a: a)
-    r = cm.run('let m; try { await call("util.f", {b: 1}) } catch (e) { m = e.message } m')
+    r = cm.run('const a = {b: 1}; let m; try { await call("util.f", a) } catch (e) { m = e.message } m')
     # the Go engine validates args against the derived schema before the handler is reached
     assert "not an allowed property" in r.value and "invalid arguments" in r.value
-    r = cm.run('let m; try { await call("util.f", {}) } catch (e) { m = e.message } m')
+    r = cm.run('const a = {}; let m; try { await call("util.f", a) } catch (e) { m = e.message } m')
     assert "a is required" in r.value
 
 
@@ -63,7 +63,7 @@ def test_schema_validation_happens_in_engine_before_handler(cm: CodeMode) -> Non
         return n
 
     cm.register_function("util.int", f)
-    r = cm.run('await call("util.int", {n: "x"})')
+    r = cm.run('const a = {n: "x"}; await call("util.int", a)')
     assert not r.ok and "must be integer" in r.error and seen == []
 
 
@@ -143,8 +143,8 @@ def test_click_errors_become_rejections_with_message(cm: CodeMode) -> None:
     r = cm.run('await call("inv.fail", {n: 1})')
     assert not r.ok and "one is bad" in r.error
     assert "status 3" in cm.run('await call("inv.fail", {n: 2})').error
-    assert "not an allowed property" in cm.run('await call("inv.put", {sku: "a", nope: 1})').error
-    r = cm.run('await call("inv.put", {sku: "a", color: "green"})')
+    assert "not an allowed property" in cm.run('const a = {sku: "a", nope: 1}; await call("inv.put", a)').error
+    r = cm.run('const a = {sku: "a", color: "green"}; await call("inv.put", a)')
     assert not r.ok and "invalid arguments" in r.error
 
 
@@ -227,6 +227,6 @@ def test_argparse_calls(cm: CodeMode) -> None:
 
 def test_argparse_parse_error_is_a_rejection_with_message(cm: CodeMode) -> None:
     cm.register_argparse(build_parser(), "tool")
-    r = cm.run('await call("tool.add", {nums: ["x"]})')
+    r = cm.run('const a = {nums: ["x"]}; await call("tool.add", a)')
     assert not r.ok and "must be integer" in r.error  # caught by the schema, before argparse
-    assert "not an allowed property" in cm.run('await call("tool.add", {nums: [1], bad: 1})').error
+    assert "not an allowed property" in cm.run('const a = {nums: [1], bad: 1}; await call("tool.add", a)').error

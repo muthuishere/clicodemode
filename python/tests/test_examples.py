@@ -92,7 +92,7 @@ def test_typer_example_code_run_calls_existing_handlers() -> None:
 
 
 def test_typer_example_failing_program_exits_1() -> None:
-    r = typer.testing.CliRunner().invoke(typer_cli.app, ["code", "run", "-e", 'await call("tasks.add", {nope: 1})'])
+    r = typer.testing.CliRunner().invoke(typer_cli.app, ["code", "run", "-e", 'const a = {nope: 1}; await call("tasks.add", a)'])
     assert r.exit_code == 1 and "invalid arguments" in last_json(r.output)["error"]
 
 

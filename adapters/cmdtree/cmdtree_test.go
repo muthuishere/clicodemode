@@ -107,8 +107,13 @@ func TestFromFlagSetRun(t *testing.T) {
 	if fmt.Sprint(j["lines"]) != "[HELLO GO HELLO GO]" || fmt.Sprint(j["rest"]) != "[-x y]" || j["wait"] != "1m0s" {
 		t.Fatalf("bad json %v", j)
 	}
-	// Unknown flag keys are rejected by the schema before anything runs.
+	// Unknown flag keys are rejected by the schema before anything runs
+	// (by check for a literal, by run-time validation otherwise).
 	r := e.Run(context.Background(), `await ops.greet({bogus: 1})`, "<t>")
+	if r.OK || !r.NotRun || len(r.Diagnostics) == 0 || !strings.Contains(r.Diagnostics[0].Message, "bogus") {
+		t.Fatalf("want check error, got %+v", r)
+	}
+	r = e.Run(context.Background(), `const a = {bogus: 1}; await ops.greet(a)`, "<t>")
 	if r.OK || !strings.Contains(r.Error, "bogus") {
 		t.Fatalf("want schema error, got %+v", r)
 	}
@@ -218,5 +223,39 @@ func TestFlagsLastForPositionalFirstCommands(t *testing.T) {
 	}
 	if strings.Join(got, "|") != "store engine|--json" {
 		t.Fatalf("argv %q, want positionals then --json", got)
+	}
+}
+
+func TestWithValidateAndCheckResult(t *testing.T) {
+	ran := 0
+	body := func(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+		ran++
+		fmt.Fprint(stdout, `{"node":"near"}`)
+		fmt.Fprint(stderr, "note: fuzzy match")
+		return nil
+	}
+	op := FromRunner("cmd.card", "Card.", body, WithJSONResult("--json"),
+		WithValidate(func(args []string) error {
+			for _, a := range args {
+				if strings.HasPrefix(a, "--bogus") {
+					return fmt.Errorf("unknown flag %s", a)
+				}
+			}
+			return nil
+		}),
+		WithCheckResult(func(args []string, stdout []byte) error {
+			if strings.Contains(string(stdout), "near") {
+				return errors.New("symbol not found (closest: near)")
+			}
+			return nil
+		}))
+	e := engine(t, op)
+	r := e.Run(context.Background(), `let m = "no"; try { await call("cmd.card", {args: ["--bogus=1"]}) } catch (err) { m = err.message }; m`, "p.js")
+	if !r.OK || !strings.Contains(r.Value.(string), "unknown flag --bogus=1") || ran != 0 {
+		t.Fatalf("validate: %+v ran=%d", r, ran)
+	}
+	r = e.Run(context.Background(), `let m = "no"; try { await call("cmd.card", {args: ["x"]}) } catch (err) { m = err.message }; m`, "p.js")
+	if !r.OK || !strings.Contains(r.Value.(string), "closest: near") || ran != 1 {
+		t.Fatalf("checkResult: %+v ran=%d", r, ran)
 	}
 }

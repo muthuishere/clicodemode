@@ -278,7 +278,7 @@
     "returns": 3
    }
   ],
-  "program": "await call(\"math.add\", {a: 1})",
+  "program": "const a = {a: 1}; await call(\"math.add\", a)",
   "expect": {
    "error": {
     "messageContains": "b is required"
@@ -317,7 +317,7 @@
     "returns": 3
    }
   ],
-  "program": "await call(\"math.add\", {a: \"1\", b: 2})",
+  "program": "const a = {a: \"1\", b: 2}; await call(\"math.add\", a)",
   "expect": {
    "error": {
     "messageContains": "number"
@@ -349,7 +349,7 @@
     }
    }
   ],
-  "program": "await call(\"h.check\", {verbos: true})",
+  "program": "const a = {verbos: true}; await call(\"h.check\", a)",
   "expect": {
    "error": {
     "messageContains": "verbos"
@@ -421,7 +421,7 @@
     "returns": "set"
    }
   ],
-  "program": "const ok = await call(\"m.set\", {mode: \"fast\"}); let bad = \"no error\"; try { await call(\"m.set\", {mode: \"warp\"}) } catch (e) { bad = \"rejected\" } [ok, bad]",
+  "program": "const ok = await call(\"m.set\", {mode: \"fast\"}); const warp = {mode: \"warp\"}; let bad = \"no error\"; try { await call(\"m.set\", warp) } catch (e) { bad = \"rejected\" } [ok, bad]",
   "expect": {
    "result": [
     "set",
@@ -460,7 +460,7 @@
     "returns": 3
    }
   ],
-  "program": "let bad = \"no error\"; try { await call(\"sum.all\", {xs: [1, \"2\"]}) } catch (e) { bad = \"rejected\" } [await call(\"sum.all\", {xs: [1, 2]}), bad]",
+  "program": "const xs = [1, \"2\"]; let bad = \"no error\"; try { await call(\"sum.all\", {xs}) } catch (e) { bad = \"rejected\" } [await call(\"sum.all\", {xs: [1, 2]}), bad]",
   "expect": {
    "result": [
     3,
@@ -500,7 +500,7 @@
     "returns": 3
    }
   ],
-  "program": "await call(\"math.add\", 5)",
+  "program": "const a = 5; await call(\"math.add\", a)",
   "expect": {
    "error": {
     "messageContains": "object"
@@ -523,7 +523,7 @@
     "description": "h"
    }
   ],
-  "program": "await call(\"h.check\", [1])",
+  "program": "const a = [1]; await call(\"h.check\", a)",
   "expect": {
    "error": {
     "messageContains": "object"
@@ -562,7 +562,7 @@
     "returns": 3
    }
   ],
-  "program": "let m; try { await call(\"math.add\", {a: 1}) } catch (e) { m = e.message } m.includes(\"math.add\")",
+  "program": "const a = {a: 1}; let m; try { await call(\"math.add\", a) } catch (e) { m = e.message } m.includes(\"math.add\")",
   "expect": {
    "result": true,
    "exit": 0
@@ -1242,6 +1242,42 @@
    },
    "max_in_flight_at_most": 3,
    "exit": 0
+  }
+ },
+ {
+  "id": "op3-check-validates-literal-args",
+  "spec": [
+   "OP-3"
+  ],
+  "description": "literal arguments that break input_schema are check errors; nothing runs",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "await call(\"math.add\", {a: 1})",
+  "expect": {
+   "calls": {
+    "math.add": 0
+   },
+   "exit": 2
   }
  }
 ]
