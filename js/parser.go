@@ -1422,7 +1422,7 @@ func (p *parser) objectLit() (Node, error) {
 
 func (p *parser) templateLit(t token) (Node, error) {
 	parts := strings.Split(t.val, "\x00")
-	n := &TemplateLit{base: base{t.pos}}
+	n := &TemplateLit{base: base{t.pos}, Raws: t.raws}
 	for k, part := range parts {
 		if k%2 == 0 {
 			n.Quasis = append(n.Quasis, strings.ReplaceAll(part, "␀", "\x00"))

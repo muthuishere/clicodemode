@@ -365,9 +365,13 @@ func (r *Runner) mapMember(m *MapV, key string) Value {
 			return Undefined, nil
 		})
 	case "keys":
-		return bi("keys", func(_ *Runner, _ Value, _ []Value) (Value, error) { return &Array{Elems: append([]Value{}, m.keys...)}, nil })
+		return bi("keys", func(_ *Runner, _ Value, _ []Value) (Value, error) {
+			return &Array{Elems: append([]Value{}, m.keys...)}, nil
+		})
 	case "values":
-		return bi("values", func(_ *Runner, _ Value, _ []Value) (Value, error) { return &Array{Elems: append([]Value{}, m.vals...)}, nil })
+		return bi("values", func(_ *Runner, _ Value, _ []Value) (Value, error) {
+			return &Array{Elems: append([]Value{}, m.vals...)}, nil
+		})
 	case "entries":
 		return bi("entries", func(_ *Runner, _ Value, _ []Value) (Value, error) { return &Array{Elems: mapEntries(m)}, nil })
 	case "forEach":
@@ -400,7 +404,9 @@ func (r *Runner) setVMember(s *SetV, key string) Value {
 			key = "values"
 		}
 		if key == "values" {
-			return bi("values", func(_ *Runner, _ Value, _ []Value) (Value, error) { return &Array{Elems: append([]Value{}, m.keys...)}, nil })
+			return bi("values", func(_ *Runner, _ Value, _ []Value) (Value, error) {
+				return &Array{Elems: append([]Value{}, m.keys...)}, nil
+			})
 		}
 		return r.mapMember(m, key)
 	case "add":
@@ -580,6 +586,10 @@ type RegExp struct {
 	Source, Flags string
 	re            *regexp.Regexp
 	LastIndex     int // UTF-16 units, used by g and y
+
+	scanned  bool
+	scanStr  string
+	scanLocs [][]int
 }
 
 func (x *RegExp) global() bool { return strings.Contains(x.Flags, "g") }
@@ -699,22 +709,34 @@ func byteAt(s string, unit int) int {
 	return len(s)
 }
 
-// execAt finds the next match at or after byte offset from (or exactly at
-// from when sticky). It returns submatch byte indexes or nil.
+// execAt finds the next match starting at or after byte offset from (or
+// exactly at from when sticky). It returns submatch byte indexes or nil.
+// Matches come from one scan of the whole string, so ^, $ and \b see the
+// real start and end of the input wherever a global search resumes.
 func (x *RegExp) execAt(s string, from int, sticky bool) []int {
 	if from > len(s) {
 		return nil
 	}
-	loc := x.re.FindStringSubmatchIndex(s[from:])
-	if loc == nil || (sticky && loc[0] != 0) {
-		return nil
-	}
-	for i := range loc {
-		if loc[i] >= 0 {
-			loc[i] += from
+	for _, loc := range x.scan(s) {
+		if loc[0] < from {
+			continue
 		}
+		if sticky && loc[0] != from {
+			return nil
+		}
+		return append([]int(nil), loc...)
 	}
-	return loc
+	return nil
+}
+
+// scan returns every non-overlapping match of s, cached for the last string
+// so an exec loop does not rescan from the start each time.
+func (x *RegExp) scan(s string) [][]int {
+	if x.scanned && x.scanStr == s {
+		return x.scanLocs
+	}
+	x.scanStr, x.scanLocs, x.scanned = s, x.re.FindAllStringSubmatchIndex(s, -1), true
+	return x.scanLocs
 }
 
 // matchArray builds the exec() result: [match, ...groups] with index, input
@@ -783,22 +805,7 @@ func nextRune(s string, i int) int {
 }
 
 // allMatches returns every non-overlapping match from the start.
-func (x *RegExp) allMatches(s string) [][]int {
-	var out [][]int
-	for from := 0; from <= len(s); {
-		loc := x.execAt(s, from, false)
-		if loc == nil {
-			break
-		}
-		out = append(out, loc)
-		if loc[1] == loc[0] {
-			from = nextRune(s, loc[1])
-		} else {
-			from = loc[1]
-		}
-	}
-	return out
-}
+func (x *RegExp) allMatches(s string) [][]int { return x.scan(s) }
 
 func (r *Runner) regexMember(x *RegExp, key string) Value {
 	switch key {
@@ -1070,7 +1077,15 @@ func (r *Runner) evalTagged(n *TaggedTemplate, env *Env) (Value, error) {
 	for _, q := range n.Tpl.Quasis {
 		strs.Elems = append(strs.Elems, q)
 	}
-	strs.extra = map[string]Value{"raw": &Array{Elems: append([]Value{}, strs.Elems...)}}
+	raw := &Array{}
+	for i, q := range n.Tpl.Quasis {
+		if i < len(n.Tpl.Raws) {
+			raw.Elems = append(raw.Elems, n.Tpl.Raws[i])
+		} else {
+			raw.Elems = append(raw.Elems, q)
+		}
+	}
+	strs.extra = map[string]Value{"raw": raw}
 	args := []Value{strs}
 	for _, x := range n.Tpl.Exprs {
 		v, err := r.eval(x, env)

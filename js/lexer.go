@@ -51,6 +51,7 @@ type token struct {
 	pos      Pos
 	nlBefore bool // newline between previous token and this one
 	flags    string
+	raws     []string // template literals: each quasi's source text, escapes not applied
 }
 
 var keywords = map[string]bool{
@@ -366,7 +367,8 @@ func (l *lexer) str(p Pos, q rune) (token, error) {
 // it into parts. Interpolations are stored as "\x00expr\x00" segments.
 func (l *lexer) template(p Pos) (token, error) {
 	l.adv()
-	var b strings.Builder
+	var b, raw strings.Builder
+	var raws []string
 	for {
 		if l.i >= len(l.src) {
 			return token{}, l.errf(p, "unterminated template literal")
@@ -374,18 +376,22 @@ func (l *lexer) template(p Pos) (token, error) {
 		c := l.adv()
 		switch {
 		case c == '`':
-			return token{kind: tTemplate, val: b.String(), pos: p}, nil
+			return token{kind: tTemplate, val: b.String(), pos: p, raws: append(raws, raw.String())}, nil
 		case c == '\\':
+			start := l.i - 1
 			e, err := l.escape(p)
 			if err != nil {
 				return token{}, err
 			}
+			raw.WriteString(string(l.src[start:l.i]))
 			if e == 0 {
 				e = '␀' // keep NUL out of the delimiter channel
 			}
 			b.WriteRune(e)
 		case c == '$' && l.peek(0) == '{':
 			l.adv()
+			raws = append(raws, raw.String())
+			raw.Reset()
 			b.WriteRune(0)
 			depth := 1
 			for depth > 0 {
@@ -406,6 +412,7 @@ func (l *lexer) template(p Pos) (token, error) {
 			b.WriteRune(0)
 		default:
 			b.WriteRune(c)
+			raw.WriteRune(c)
 		}
 	}
 }

@@ -2,6 +2,7 @@ package codemode
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -218,4 +219,71 @@ func TestSessionLeavesEngineRunUnchanged(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 	_ = js.Undefined
+}
+
+// SES-2, SES-4: runs that overlap (one detached while others start) keep
+// their own input and redeclare rules, and share the scope without races.
+func TestSessionOverlappingRuns(t *testing.T) {
+	e, _ := sessionEngine(t)
+	s := e.NewSession(SessionConfig{DetachAfter: 20 * time.Millisecond})
+	defer s.Close()
+	ctx := context.Background()
+	a := s.Run(ctx, `
+		let seen = []
+		for (let i = 0; i < 5; i++) {
+			await ops.slow.wait({ms: 15})
+			seen.push(input.who)
+		}
+		seen.join(",")`, RunOptions{Input: []byte(`{"who":"A"}`)})
+	if !a.Detached {
+		t.Fatalf("A should detach: %+v", a)
+	}
+	b := s.Run(ctx, `let x = 1; const p = await pmap([1, 2, 3], async n => { await sleep(5); return n * 2 }, {concurrency: 2}); [input.who, x, p]`, RunOptions{Input: []byte(`{"who":"B"}`), DetachAfter: -1})
+	if !b.OK || b.Value.([]any)[0] != "B" {
+		t.Fatalf("B: %+v", b)
+	}
+	c := s.Run(ctx, `let x = 2; await stream([1, 2, 3]).map(v => v + x).toArray()`, RunOptions{Input: []byte(`{"who":"C"}`), DetachAfter: -1})
+	if !c.OK {
+		t.Fatalf("C: %+v", c)
+	}
+	if d := s.Run(ctx, `let y = 1; let y = 2`, RunOptions{DetachAfter: -1}); d.OK {
+		t.Fatal("one run declaring a name twice must fail")
+	}
+	evs := pollUntilDone(t, s, a.Handle)
+	var res any
+	for _, ev := range evs {
+		if ev.Kind == "result" {
+			res = ev.Value
+		}
+		if ev.Kind == "error" {
+			t.Fatalf("A failed: %+v", ev)
+		}
+	}
+	if res != "A,A,A,A,A" {
+		t.Fatalf("A saw %v (events %+v)", res, evs)
+	}
+	if r := s.Run(ctx, "[x, seen.length]", RunOptions{}); fmt.Sprint(r.Value) != "[2 5]" {
+		t.Fatalf("%+v", r)
+	}
+}
+
+// Errors inside a function defined by an earlier run carry that run's
+// source line in the snippet, and a kind.
+func TestSessionSnippetFromEarlierRun(t *testing.T) {
+	e, _ := sessionEngine(t)
+	s := e.NewSession(SessionConfig{})
+	defer s.Close()
+	ctx := context.Background()
+	s.Run(ctx, "function boom() {\n  return null.x\n}", RunOptions{})
+	r := s.Run(ctx, "const a = 1\nboom()", RunOptions{})
+	if r.OK || len(r.Diagnostics) == 0 {
+		t.Fatalf("%+v", r)
+	}
+	d := r.Diagnostics[0]
+	if !strings.Contains(d.Snippet, "return null.x") || d.Kind != "TypeError" {
+		t.Fatalf("%+v", d)
+	}
+	if r := s.Run(ctx, "ops.nope()", RunOptions{}); r.Diagnostics[0].Kind != "check" {
+		t.Fatalf("%+v", r.Diagnostics)
+	}
 }

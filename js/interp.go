@@ -49,14 +49,39 @@ type Shared struct {
 	globals *Env
 	scope   *Env
 	once    sync.Once
+	claimMu sync.Mutex
+	claimed map[string]bool
 }
 
 // NewShared returns empty session state.
 func NewShared() *Shared {
-	sh := &Shared{gil: &fifoLock{}, globals: newEnv(nil)}
+	sh := &Shared{gil: &fifoLock{}, globals: newEnv(nil), claimed: map[string]bool{}}
 	sh.scope = newEnv(sh.globals)
+	sh.scope.session = true
 	return sh
 }
+
+// Claim reports true the first time it is called with key, so a host
+// installs session-wide globals (operations, exec, workflow) once.
+func (sh *Shared) Claim(key string) bool {
+	sh.claimMu.Lock()
+	defer sh.claimMu.Unlock()
+	if sh.claimed[key] {
+		return false
+	}
+	sh.claimed[key] = true
+	return true
+}
+
+// InputRef is the value a host defines as the global `input` in a session:
+// reading it yields the input of the run whose code is executing (see
+// Interp.SetInput), so a detached run keeps seeing its own input.
+var InputRef Value = inputRefT{}
+
+type inputRefT struct{}
+
+// SetInput sets the value InputRef resolves to for this run.
+func (it *Interp) SetInput(v Value) { it.input = v }
 
 // Lock runs fn while holding the session's interpreter lock, so it can read
 // or change the persistent scope safely.
@@ -87,6 +112,7 @@ func (sh *Shared) Bindings() []Binding {
 // Reset drops every persistent top-level binding. Call it inside Lock.
 func (sh *Shared) Reset() {
 	sh.scope = newEnv(sh.globals)
+	sh.scope.session = true
 	declGen.Add(1)
 }
 
@@ -114,6 +140,8 @@ type Interp struct {
 	sem     chan struct{}
 	modules map[string]*module
 	modMu   sync.Mutex
+	input   Value           // session runs: what InputRef resolves to
+	topDecl map[string]bool // session runs: names this run declared at top level
 
 	fatalMu  sync.Mutex
 	fatal    error // first limit/cancel error; ends the run, never catchable
@@ -272,9 +300,9 @@ type binding struct {
 
 // Env is a lexical scope.
 type Env struct {
-	vars   map[string]*binding
-	parent *Env
-	redecl map[string]bool // session scope: names a run may declare again
+	vars    map[string]*binding
+	parent  *Env
+	session bool // a session's persistent top-level scope
 }
 
 func newEnv(parent *Env) *Env { return &Env{parent: parent} } // vars allocated on first declare
@@ -520,15 +548,9 @@ func (it *Interp) RunTop(prog *Program, file string) (Value, error) {
 	var env *Env
 	if sh := it.cfg.Shared; sh != nil {
 		env = sh.scope
-		env.redecl = make(map[string]bool, len(env.vars))
-		for n := range env.vars { // REPL rule: a later run may declare a name again
-			env.redecl[n] = true
-		}
+		it.topDecl = map[string]bool{}
 	}
 	res, exports, err := r.runModuleIn(prog, file, env)
-	if env != nil {
-		env.redecl = nil
-	}
 	if err == nil {
 		if d, ok := exports.Get("default"); ok {
 			res = d
@@ -1058,10 +1080,16 @@ func (r *Runner) iterate(v Value, at Node) ([]Value, error) {
 func (r *Runner) bindPattern(target Node, v Value, env *Env, kind string) error {
 	switch t := target.(type) {
 	case *Ident:
-		if b, ok := env.vars[t.Name]; ok && kind != "var" && b.kind != "var" && b.kind != "function" && !env.redecl[t.Name] {
+		b, exists := env.vars[t.Name]
+		if env.session && r.it.topDecl != nil {
+			// REPL rule: a name from an earlier run may be declared again,
+			// but one run may not declare a name twice.
+			exists = exists && r.it.topDecl[t.Name]
+			r.it.topDecl[t.Name] = true
+		}
+		if exists && kind != "var" && b.kind != "var" && b.kind != "function" {
 			return r.throwAt(t, "SyntaxError", "identifier %q has already been declared", t.Name)
 		}
-		delete(env.redecl, t.Name) // only once per run
 		env.declare(t.Name, v, kind)
 		return nil
 	case *ArrayPattern:
@@ -1270,6 +1298,9 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 		b, ok := resolve(n, env)
 		if !ok {
 			return nil, r.throwAt(n, "ReferenceError", "%s is not defined", n.Name)
+		}
+		if _, ok := b.v.(inputRefT); ok {
+			return r.it.input, nil
 		}
 		return b.v, nil
 	case *ArrayLit:

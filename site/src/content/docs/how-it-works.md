@@ -21,7 +21,7 @@ CLI CodeMode moves the loop into the CLI. The agent sends one program; the CLI r
 
 ## One `code run`, step by step
 
-1. **Parse and check.** The program is parsed. Unsupported syntax (`class`, `new`, regex, `switch`) is a parse error naming the construct. Every literal operation name is looked up; an unknown one is an error with a did-you-mean hint. If there are diagnostics, the CLI exits 2 and **nothing runs**.
+1. **Parse and check.** The program is parsed. Unsupported syntax (generators, `delete`, `eval`, regex lookaround) is a parse error naming the construct. Every literal operation name is looked up; an unknown one is an error with a did-you-mean hint. If there are diagnostics, the CLI exits 2 and **nothing runs**.
 2. **Bind input.** `--input JSON` becomes the global `input` (null when absent).
 3. **Evaluate.** Each `ops.x.y(args)` or `call("x.y", args)` returns a Promise. Before a handler runs, its arguments are validated against `input_schema` and `Policy.Allow` is consulted. `Promise.all` really runs operations in parallel, bounded by `MaxConcurrency` (default 32).
 4. **Bound.** Steps (default 10M), call depth (512), concurrency and an optional timeout are hard limits. Hitting one stops the whole run and cannot be caught.

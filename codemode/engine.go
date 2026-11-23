@@ -60,6 +60,9 @@ type Diagnostic struct {
 	Col      int    `json:"col"`
 	Message  string `json:"message"`
 	Hint     string `json:"hint,omitempty"`
+	// Kind is "syntax" or "runtime" for engine errors, or the thrown
+	// error's name (TypeError, ...) for an uncaught throw.
+	Kind string `json:"kind,omitempty"`
 	// Snippet is the source line with a caret under the column (set by
 	// Session runs).
 	Snippet string `json:"snippet,omitempty"`
@@ -164,7 +167,7 @@ func fromErr(err error, file string) Diagnostic {
 		if f == "" {
 			f = file
 		}
-		return Diagnostic{Severity: "error", File: f, Line: je.Pos.Line, Col: je.Pos.Col, Message: je.Kind + " error: " + je.Msg}
+		return Diagnostic{Severity: "error", File: f, Line: je.Pos.Line, Col: je.Pos.Col, Message: je.Kind + " error: " + je.Msg, Kind: je.Kind}
 	}
 	var th *js.Throw
 	if errors.As(err, &th) {
@@ -173,7 +176,15 @@ func fromErr(err error, file string) Diagnostic {
 			f = file
 		}
 		msg := strings.TrimPrefix(err.Error(), fmt.Sprintf("%s:%s: ", f, th.Pos))
-		return Diagnostic{Severity: "error", File: f, Line: th.Pos.Line, Col: th.Pos.Col, Message: msg}
+		kind := "throw"
+		if o, ok := th.Value.(*js.Object); ok {
+			if n, ok := o.Get("name"); ok {
+				if s, ok := n.(string); ok && s != "" {
+					kind = s
+				}
+			}
+		}
+		return Diagnostic{Severity: "error", File: f, Line: th.Pos.Line, Col: th.Pos.Col, Message: msg, Kind: kind}
 	}
 	return Diagnostic{Severity: "error", File: file, Message: err.Error()}
 }
@@ -548,6 +559,9 @@ func (e *Engine) newInterp(ctx context.Context, file string) *js.Interp {
 
 func (e *Engine) newInterpCfg(ctx context.Context, file string, cfg js.Config) *js.Interp {
 	it := js.New(ctx, cfg)
+	if cfg.Shared != nil && !cfg.Shared.Claim("host-globals") {
+		return it // a session installs these once; they act through the calling run
+	}
 	it.Define("call", &js.Builtin{Name: "call", Fn: func(r *js.Runner, _ js.Value, args []js.Value) (js.Value, error) {
 		if len(args) == 0 {
 			return nil, typeErr("call(name, args) needs an operation name")

@@ -41,6 +41,11 @@ func TestLangRegex(t *testing.T) {
 		{"division still works", `const a = 10, b = 2; [a / b, (a) / b, [4][0] / 2]`, `[5,5,2]`},
 		{"multiline", `"a\nb".match(/^b$/m)[0]`, `"b"`},
 		{"unicode index", `"héllo wörld".search(/w/)`, `6`},
+		{"g with word boundary", `"foo bar".replace(/\b\w/g, c => c.toUpperCase())`, `"Foo Bar"`},
+		{"g with caret", `"aaa".replace(/^a/g, "b")`, `"baa"`},
+		{"exec loop with caret", `const re = /^\w/g; const out = []; let m; while ((m = re.exec("ab")) !== null) out.push(m[0]); out`, `["a"]`},
+		{"split with boundary", `"one two".split(/\b/)`, `["one"," ","two"]`},
+		{"multiline g", `"a1\nb2".match(/^\w/gm)`, `["a","b"]`},
 	})
 }
 
@@ -120,6 +125,8 @@ func TestLangTaggedTemplates(t *testing.T) {
 		{"quote tag", "const q = (s, ...v) => s.reduce((acc, p, i) => acc + p + (i < v.length ? \"'\" + v[i] + \"'\" : \"\"), \"\"); q`git log ${\"main; rm\"}`", `"git log 'main; rm'"`},
 		{"member tag", "const o = { pre: \"#\", t(s, x) { return this.pre + s[0] + x } }; o.t`v=${5}`", `"#v=5"`},
 		{"String.raw", "String.raw`a${1}b`", `"a1b"`},
+		{"raw keeps escapes", "String.raw`C:\\new\\t${1}\\n`", `"C:\\new\\t1\\n"`},
+		{"cooked vs raw", "((s) => [s[0], s.raw[0]])`a\\tb`", `["a\tb","a\\tb"]`},
 		{"no subs", "((s) => s.length)`plain`", `1`},
 	})
 }

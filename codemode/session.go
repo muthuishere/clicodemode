@@ -95,7 +95,7 @@ type Session struct {
 	runs    map[int64]*sessionRun
 	events  []Event
 	closed  bool
-	sources map[int64]string
+	sources map[string]string // file -> source, for snippets of errors in earlier runs' functions
 }
 
 type sessionRun struct {
@@ -112,7 +112,7 @@ func (e *Engine) NewSession(cfg SessionConfig) *Session {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Session{e: e, cfg: cfg, sh: js.NewShared(), ctx: ctx, cancel: cancel,
-		runs: map[int64]*sessionRun{}, sources: map[int64]string{}}
+		runs: map[int64]*sessionRun{}, sources: map[string]string{}}
 }
 
 // Run checks and runs src in the session scope. Top-level declarations stay
@@ -132,7 +132,7 @@ func (s *Session) Run(ctx context.Context, src string, opts RunOptions) RunResul
 
 	p, diags := s.e.Compile(src, file)
 	if hasErrors(diags) {
-		return RunResult{Handle: id, Error: "program has errors; nothing was run", Diagnostics: withSnippets(diags, src), NotRun: true, MS: time.Since(start).Milliseconds()}
+		return RunResult{Handle: id, Error: "program has errors; nothing was run", Diagnostics: s.snippets(diags, file, src), NotRun: true, MS: time.Since(start).Milliseconds()}
 	}
 	var input js.Value
 	if len(opts.Input) > 0 {
@@ -150,17 +150,21 @@ func (s *Session) Run(ctx context.Context, src string, opts RunOptions) RunResul
 	runCtx, runCancel := context.WithCancel(s.ctx)
 	s.mu.Lock()
 	s.runs[id] = &sessionRun{cancel: runCancel}
-	s.sources[id] = src
+	s.sources[file] = src
 	s.mu.Unlock()
 
 	it := s.e.newInterpCfg(runCtx, file, js.Config{Limits: limits, Stdout: &eventWriter{s: s, id: id}, Loader: s.e.loader(file), Shared: s.sh})
-	it.Define("input", input)
+	if s.sh.Claim("input") {
+		it.Define("input", js.InputRef)
+	}
+	it.SetInput(input)
 
 	type top struct {
 		v   any
 		err error
 	}
 	topc := make(chan top, 1)
+	doneCh := make(chan struct{})
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -183,7 +187,7 @@ func (s *Session) Run(ctx context.Context, src string, opts RunOptions) RunResul
 		s.mu.Unlock()
 		if detached {
 			if err != nil {
-				d := withSnippets([]Diagnostic{fromErr(err, file)}, src)
+				d := s.snippets([]Diagnostic{fromErr(err, file)}, file, src)
 				s.emit(Event{Handle: id, Kind: "error", Error: d[0].String(), Diagnostics: d})
 			} else {
 				s.emit(Event{Handle: id, Kind: "result", Value: g})
@@ -191,10 +195,11 @@ func (s *Session) Run(ctx context.Context, src string, opts RunOptions) RunResul
 		}
 		werr := it.Wait(p.ast, file)
 		if err == nil && werr != nil {
-			d := withSnippets([]Diagnostic{fromErr(werr, file)}, src)
+			d := s.snippets([]Diagnostic{fromErr(werr, file)}, file, src)
 			s.emit(Event{Handle: id, Kind: "error", Error: d[0].String(), Diagnostics: d})
 		}
 		s.finishRun(id)
+		close(doneCh)
 	}()
 
 	// Cancel on the caller's ctx until Run returns.
@@ -236,12 +241,18 @@ func (s *Session) Run(ctx context.Context, src string, opts RunOptions) RunResul
 		res.OK = t.err == nil
 		res.Value = t.v
 		if t.err != nil {
-			res.Diagnostics = withSnippets([]Diagnostic{fromErr(t.err, file)}, src)
+			res.Diagnostics = s.snippets([]Diagnostic{fromErr(t.err, file)}, file, src)
 			res.Error = res.Diagnostics[0].String()
 			res.Value = nil
 		}
 	default:
 		res.Detached = true
+	}
+	if gotTop { // give background work that is about to finish a moment
+		select {
+		case <-doneCh:
+		case <-time.After(2 * time.Millisecond):
+		}
 	}
 	s.mu.Lock()
 	if r := s.runs[id]; r != nil {
@@ -286,12 +297,12 @@ func (s *Session) Poll(handle int64) (events []Event, done bool) {
 func (s *Session) Cancel(handle int64) bool {
 	s.mu.Lock()
 	r := s.runs[handle]
+	active := r != nil && !r.done
 	s.mu.Unlock()
-	if r == nil || r.done {
-		return false
+	if active {
+		r.cancel()
 	}
-	r.cancel()
-	return true
+	return active
 }
 
 // Vars lists the persistent top-level bindings with short previews, sorted
@@ -324,7 +335,6 @@ func (s *Session) finishRun(id int64) {
 	if r := s.runs[id]; r != nil {
 		r.done = true
 	}
-	delete(s.sources, id)
 	s.mu.Unlock()
 	s.emit(Event{Handle: id, Kind: "done"})
 }
@@ -342,6 +352,11 @@ func (s *Session) takeLocked(handle int64) []Event {
 	for _, ev := range s.events {
 		if handle == 0 || ev.Handle == handle {
 			out = append(out, ev)
+			if ev.Kind == "done" {
+				if r := s.runs[ev.Handle]; r != nil && r.returned {
+					delete(s.runs, ev.Handle) // finished and reported: forget it
+				}
+			}
 		} else {
 			keep = append(keep, ev)
 		}
@@ -369,12 +384,27 @@ func preview(s string, n int) string {
 	return s
 }
 
-// withSnippets adds the offending source line and a caret to each
-// diagnostic that has a position, so a model can fix the program in one go.
-func withSnippets(ds []Diagnostic, src string) []Diagnostic {
-	lines := strings.Split(src, "\n")
+// snippets adds the offending source line and a caret to each diagnostic
+// that has a position, so a model can fix the program in one go. The line
+// comes from the run the diagnostic points at, which may be an earlier run
+// whose function was called. Diagnostics without a kind came from check.
+func (s *Session) snippets(ds []Diagnostic, file, src string) []Diagnostic {
 	for i := range ds {
 		d := &ds[i]
+		if d.Kind == "" {
+			d.Kind = "check"
+		}
+		text := src
+		if d.File != file {
+			s.mu.Lock()
+			t, ok := s.sources[d.File]
+			s.mu.Unlock()
+			if !ok {
+				continue
+			}
+			text = t
+		}
+		lines := strings.Split(text, "\n")
 		if d.Line < 1 || d.Line > len(lines) || d.Snippet != "" {
 			continue
 		}

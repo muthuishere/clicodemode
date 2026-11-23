@@ -161,9 +161,11 @@ one read.
 
 A JavaScript subset: `const`/`let`, functions and arrows, destructuring,
 spread, template literals, `async`/`await`, `Promise.all`, `try`/`catch`,
-loops, `pmap` for bounded parallel maps. Not supported (a check error, never
-silent): `class`, `new`, `this`, generators, `switch`, regex, `eval`, dynamic
-`import()`. Full spec: [SPEC.md](https://github.com/muthuishere/clicodemode/blob/main/docs/SPEC.md).
+loops, `switch`, classes with `new`/`this`/`extends`, regexes (RE2, so no
+catastrophic backtracking), tagged templates, `Map`/`Set`/`Date`, `pmap` for
+bounded parallel maps. Not supported (a check error, never silent):
+generators, `delete`, getters/setters, regex lookaround and backreferences,
+`eval`, dynamic `import()`. Full spec: [SPEC.md](https://github.com/muthuishere/clicodemode/blob/main/docs/SPEC.md).
 
 ## Security
 

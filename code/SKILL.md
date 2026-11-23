@@ -47,8 +47,10 @@ const [h, u] = await Promise.all([
 - Arguments must match the operation's input schema.
 - Supported: const/let, objects/arrays, destructuring, spread, closures,
   arrow functions, if/for/for-of/while, try/catch/finally, async/await,
-  Promises, static `import` of `./x.js` / `./x.json`.
-- Not supported: class, new, this, switch, regex, eval, npm, Node/browser APIs.
+  Promises, switch, classes (new, this, extends, super), regexes (RE2: no
+  lookaround or backreferences), tagged templates, Map/Set/Date, static
+  `import` of `./x.js` / `./x.json`.
+- Not supported: generators, delete, getters/setters, eval, npm, Node/browser APIs.
 
 Processes (only where the host permits): `await exec(["git","status"])` gives
 `{ok, exitCode, stdout, stderr}`; streams:

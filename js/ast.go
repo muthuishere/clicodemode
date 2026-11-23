@@ -37,6 +37,7 @@ type (
 		base
 		Quasis []string
 		Exprs  []Node
+		Raws   []string // source text of each quasi (for tagged templates' strings.raw)
 	}
 	ArrayLit struct {
 		base

@@ -64,9 +64,16 @@ Cobra hosts adapt `cmd.SetArgs/SetOut/SetErr/ExecuteContext` into a runner
 ## Language
 
 A deliberately limited JavaScript subset with normal JS semantics for what it
-supports (see `codemode docs`). Unsupported constructs (`class`, `new`,
-`this`, generators, `switch`, `delete`, dynamic `import()`, `eval`, regex)
-are rejected at parse time with a pointed message rather than misbehaving.
+supports (see `codemode docs`). Unsupported constructs (generators,
+`delete`, class getters/setters, regex lookaround and backreferences, dynamic
+`import()`, `eval`) are rejected at parse time with a pointed message rather
+than misbehaving. Regexes run on Go's RE2, so matching is linear in the input.
+
+A session (`Engine.NewSession`) is a set of runs over one `js.Shared`: one
+interpreter lock, one globals env and one persistent top-level scope. Each run
+is its own `js.Interp`, so its context, limits, background tasks and
+unhandled-rejection checks stay per run; closures from earlier runs execute
+under whichever run calls them.
 
 Program result: the default export (a function is called and awaited), else
 the last expression statement's value (so `code eval` and short scripts just
