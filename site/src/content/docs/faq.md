@@ -56,7 +56,7 @@ aos, shipped in [aos v0.15.1](https://github.com/muthuishere/aos/releases/tag/v0
 
 ## Which languages are supported?
 
-Go is the primary, supported library. Rust, TypeScript and Python wrappers (the same Go engine compiled to WASM) are in progress on an unmerged branch. They are not released yet, and community help is welcome.
+Go is the primary library. Python (`pip install clicodemode`), TypeScript (`npm install clicodemode`) and Rust (`cargo add clicodemode`) wrappers run the same Go engine compiled to WASM and are experimental. The engine owns parsing, language semantics and the portable checks; each wrapper registers operations, calls your handlers and does I/O. Authorization and file or process security stay with your host program; WASM alone does not sandbox them. Known gaps: Python and Rust handlers are synchronous, and a TypeScript timeout cannot stop a CPU-bound loop. See the [python](https://github.com/muthuishere/clicodemode/tree/main/python), [npm](https://github.com/muthuishere/clicodemode/tree/main/npm) and [rust](https://github.com/muthuishere/clicodemode/tree/main/rust) READMEs.
 
 ## What does it cost?
 

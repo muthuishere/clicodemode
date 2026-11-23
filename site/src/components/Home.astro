@@ -123,7 +123,7 @@ $ echo $?
 
 <div class="home not-content">
 	<section class="hero">
-		<p class="eyebrow"><span class="dot" aria-hidden="true"></span> Go library <span class="sep">/</span> v0.5.2 <span class="sep">/</span> MIT</p>
+		<p class="eyebrow"><span class="dot" aria-hidden="true"></span> Go library + Python, TypeScript, Rust <span class="sep">/</span> v0.6.1 <span class="sep">/</span> MIT</p>
 		<h1 id="_top">Your agent has Code Mode. <span class="accent">Does your CLI?</span></h1>
 		<p class="deck">
 			Claude Code and OpenAI Codex can compose tool calls through generated programs. But if that code invokes a
@@ -131,8 +131,8 @@ $ echo $?
 			registered operations in one process?
 		</p>
 		<p class="pitch">
-			CLI CodeMode is an embeddable Go library for existing CLIs: register the commands you have, expose
-			<code>code</code>, and agents send one program. It is not a new agent; it complements agent-side Code Mode.
+			CLI CodeMode is an embeddable library for existing CLIs, in Go, with Python, TypeScript and Rust
+			wrappers: register the commands you have, expose <code>code</code>, and agents send one program. It is not a new agent; it complements agent-side Code Mode.
 		</p>
 		<div class="ctas">
 			<a class="btn primary" href={href('/getting-started/')}>Get started <span aria-hidden="true">→</span></a>
@@ -141,7 +141,15 @@ $ echo $?
 				GitHub
 			</a>
 		</div>
-		<div class="install"><Code code={qsInstall} lang="sh" /></div>
+		<div class="install">
+			<Tabs syncKey="lang">
+				<TabItem label="Go"><Code code={qsInstall} lang="sh" /></TabItem>
+				<TabItem label="Python"><Code code="pip install clicodemode" lang="sh" /></TabItem>
+				<TabItem label="TypeScript"><Code code="npm install clicodemode" lang="sh" /></TabItem>
+				<TabItem label="Rust"><Code code="cargo add clicodemode" lang="sh" /></TabItem>
+			</Tabs>
+			<p class="install-note">Go is the native library. Python (Click, Typer, argparse), TypeScript and Rust run the same Go engine as WASM and are experimental: <a href={`${GH}/tree/main/python`}>python</a> · <a href={`${GH}/tree/main/npm`}>npm</a> · <a href={`${GH}/tree/main/rust`}>rust</a>.</p>
+		</div>
 	</section>
 
 	<section class="band" aria-labelledby="h-compare">
@@ -310,6 +318,7 @@ $ echo $?
 	.btn.primary { background: var(--cc-accent); color: var(--cc-accent-ink); border-color: var(--cc-accent); }
 	.btn.primary:hover { transform: translateY(-1px); }
 	.install { max-width: 34rem; }
+	.install-note { font-size: 0.85rem; color: var(--cc-text-2); margin-top: 0.6rem; }
 
 	.band { border-top: 1px solid var(--cc-line); padding: clamp(2.8rem, 6vw, 4.5rem) 0; }
 	.kicker { font: 500 0.76rem var(--cc-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--cc-accent); margin: 0 0 0.7rem; }
