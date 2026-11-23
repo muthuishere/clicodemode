@@ -1,217 +1,119 @@
 # CLI CodeMode
 
-**Code Mode for every CLI.** A pure-Go library: import it, register the
-commands your CLI already has, and your CLI gains discoverable,
-self-describing operations plus a small JavaScript-like language that agents
-(and people) use to call and compose them.
+**Your agent has Code Mode. Does your CLI?**
 
-No Node.js, V8, Goja, cgo or external interpreter. No mandatory MCP or LLM.
-Optional MCP server (stdio) in `adapters/mcp`: see [docs/MCP.md](docs/MCP.md).
+Claude Code and OpenAI Codex can compose tool calls through generated programs.
+But if that program runs a CLI three times, the CLI still starts three times.
+CLI CodeMode lets the CLI itself run the program: register the commands you
+already have, expose a `code` command, and an agent sends one small JavaScript
+program that calls them inside one process. One JSON value comes back.
+
+Docs and examples: **https://muthuishere.github.io/clicodemode/**
+
+## Three ways to do the same three things
+
+Move a window to another monitor, set the brightness, open YouTube, with
+[aos](https://github.com/muthuishere/aos):
+
+| | Agent sends | aos processes | Result |
+|---|---|---|---|
+| Normal mode | 3 tool calls (`aos window move …`, `aos display brightness …`, `aos open …`) | 3, one after another | 3 text outputs |
+| Agent Code Mode (Claude Code) | 1 JS program with three `` $`aos …` `` calls | 3, in parallel | 3 text outputs |
+| **CLI CodeMode** | 1 program to `aos code run` | **1** | **1 JSON value** |
+
+```js
+// aos code run -
+await Promise.all([
+  ops["window-move"]({ args: ["Safari"], zone: "1A", monitor: 2 }),
+  ops["display-brightness"]({ args: ["70"] }),
+  ops.open({ args: ["https://youtube.com"] }),
+])
+```
+
+Observed with Claude Code 2.1.330 and a wrapper logging every aos start. Agent
+Code Mode and CLI CodeMode work together: an agent-side program can call
+`aos code run` once instead of aos three times.
+
+## Install
 
 ```sh
-go get github.com/muthuishere/clicodemode@latest && go mod tidy
+go get github.com/muthuishere/clicodemode@latest   # Go (the native library)
+pip install clicodemode                            # Python: Click, Typer, argparse
+npm install clicodemode                            # TypeScript / Node
+cargo add clicodemode                              # Rust
 ```
+
+Python, TypeScript and Rust run the same Go engine compiled to WASM and are
+experimental. Your host program still owns authorization and file/process
+security.
+
+## Add it to a Go CLI
+
+Wrap the commands you already have; their bodies don't change:
 
 ```go
 reg := codemode.NewRegistry("mycli 1.4.0")
-reg.MustRegister(codemode.Operation{
-    Name:        "health.check",
-    Description: "Report whether this machine is healthy.",
-    InputSchema: json.RawMessage(`{"type":"object","properties":{"verbose":{"type":"boolean"}}}`),
-    SideEffects: codemode.SideEffectNone,
-    Idempotent:  true,
-    Handler: func(ctx context.Context, args map[string]any) (any, error) {
-        return existingHealthCheck(args["verbose"] == true), nil // wrap, don't rewrite
-    },
-})
-// mount under your own `code` subcommand:
+reg.MustRegister(cmdtree.FromRunner("repo.status", "Show repo status.", runStatus,
+    cmdtree.WithJSONResult("--json"),            // return parsed JSON, throw on failure
+    cmdtree.WithSideEffects(codemode.SideEffectNone)))
+
+// under your own `code` subcommand:
 os.Exit(codemode.NewCLI(codemode.NewEngine(reg), "mycli code").Main(ctx, os.Args[2:]))
 ```
 
+Then an agent (or you) can:
+
 ```sh
-mycli code operations                 # list
-mycli code describe health.check      # contract (--json for machines)
-mycli code capabilities --json        # everything + a fingerprint to cache on
-mycli code docs                       # language + operation reference
-mycli code check prog.js              # diagnostics with file:line:col, nothing runs
-mycli code compile prog.js            # checked plan + cache key
-mycli code run prog.js                # run ('-' reads stdin)
-mycli code eval '1 + 2'
-mycli code skill                      # generated SKILL.md for this CLI
-mycli code run-step steps.js#inspect --input '{"x":1}'   # one exported step
+mycli code capabilities --json            # every operation + a fingerprint
+mycli code check prog.js                  # file:line:col diagnostics, nothing runs
+mycli code run - --input '{"repo":"."}'   # run a program from stdin
+mycli code skill                          # generated SKILL.md for agents
 ```
 
-Already have commands? Wrap them instead of writing handlers
-(`adapters/cmdtree`, stdlib only):
+Try the demo: `go run ./cmd/democli code help`.
 
-```go
-fs := flag.NewFlagSet("status", flag.ContinueOnError) // or your existing one
-fs.Bool("short", false, "short output")
-reg.MustRegister(cmdtree.FromFlagSet("repo.status", "Show repo status.", fs,
-    func(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-        return runStatus(args, stdout) // existing command body, unchanged
-    }))
-// call: await ops.repo.status({short: true, args: ["."]})
-//   ->  {ok, exit, stdout, stderr, json?}
-```
+## Shipped in real CLIs
 
-Caches: set `CODEMODE_CACHE_DIR` to cache compiled plans for `check`/`compile`
-(off by default), or set `Engine.Cache`. `Cache.Load/SaveCapabilities` with
-`CapabilityCacheKey(version, fingerprint, authContext)` caches capability
-documents. Neither stores secrets or approvals.
+- **aos** ([v0.15.2](https://github.com/muthuishere/aos/releases/tag/v0.15.2)):
+  `aos code` exposes 254 operations, one per batch verb, through the same path
+  as the CLI.
+- **ctx-optimize** ([v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0)):
+  `ctx-optimize code` over its read-only verbs.
 
-```js
-// prog.js
-import { summarize } from "./steps/report.js"
-const [h, disk] = await Promise.all([
-  call("health.check", { verbose: true }),
-  ops.disk.usage({ path: "/" }),
-])
-export default summarize(h, disk)
-```
-
-## Status
-
-v0.5.2. **Done**: operation registry, describe/operations/
-capabilities with fingerprint, the interpreter (lexer, Pratt parser,
-evaluator: const/let, objects/arrays, destructuring, spread, closures,
-try/catch/finally, async/await, Promises incl. all/race/allSettled/any,
-static relative imports of .js and .json), budgets/timeouts/bounded
-concurrency/cancellation, input-schema validation, policy hook, CLI, demo.
-`exec(argv)` / `execStream(argv)` / `shell()` behind an opt-in `ExecPolicy`
-(deny by default, minimal child env), lazy backpressured streams
-(`.jsonl() .csv() .yaml() .map .filter .take .toArray .reduce .writeJSONL()`) that kill
-the process on early stop or cancel; `cwd` is confined to the policy directory.
-`pmap(items, fn, {concurrency})` for bounded, order-preserving parallel maps.
-Command-tree adapters (`cmdtree.FromRunner`, `cmdtree.FromFlagSet`),
-capability and compiled-plan caches, `code skill` and `code run-step`.
-Optional MCP server (`adapters/mcp`).
-
-**Proven on real CLIs**: aos (`aos code`, 254 operations) and ctx-optimize
-(`ctx-optimize code`) (shipped in [aos v0.15.2](https://github.com/muthuishere/aos/releases/tag/v0.15.2) and [ctx-optimize v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0)); WFNexus
-runs exported plans (validated with real runs). Roadmap:
-[docs/ROADMAP.md](docs/ROADMAP.md).
-
-Try it: `go run ./cmd/democli code help`.
-
-## With Claude Code's Code Mode
-
-[Claude Code's Code Mode](https://code.claude.com/docs/en/code-mode) puts the
-code loop in the **agent**: one JavaScript snippet makes many tool calls, so
-model round trips drop. But each CLI command that snippet runs
-(`` $`aos window list --json` ``) is still a separate process that starts the CLI,
-parses its arguments and prints text the snippet has to parse back.
-
-CLI CodeMode puts the loop in the **CLI**: one `code run`, one process, and the
-operations return JSON objects in-process. The two compose:
-
-```js
-// inside Claude Code Code Mode: one process per CLI, not one per command
-const r = await $`aos code run - --input ${JSON.stringify(input)} --json < prog.js`.json()
-```
-
-Model round trips are the same either way (one). What changes is processes,
-CPU, and how much raw output flows back.
-
-### Measured on real CLIs
-
-Same task both ways, medians, Apple Silicon. "Code Mode style" = one process per
-command, the way a Claude Code Code Mode snippet calls a CLI today.
-
-**ctx-optimize**: query, then `card` on the top 5 hits, then `change_plan`
-(7 calls):
+Measured, medians on Apple Silicon:
 
 | | wall | CPU | bytes back |
 |---|---|---|---|
-| 7 processes, sequential | 68 ms | 167 ms | 28,273 |
-| 7 processes, cards in parallel | 47 ms | 164 ms | 28,273 |
-| **`ctx-optimize code run`, 1 process** | **33 ms** | **137 ms** | **169** |
+| ctx-optimize, 7 calls as 7 processes (sequential) | 68 ms | 167 ms | 28,273 |
+| ctx-optimize, 7 calls as 7 processes (parallel) | 47 ms | 164 ms | 28,273 |
+| **ctx-optimize, 1 `code run`** | **33 ms** | **137 ms** | **169** |
+| aos, 24 calls as 24 processes (sequential) | 1,644 ms | 1,228 ms | |
+| aos, 24 calls as 24 processes (parallel) | 217 ms | 1,493 ms | |
+| **aos, 1 `code run`** | **217 ms** | **1,012 ms** | |
 
-**aos** (each `aos` process takes ~66 ms to start):
+Against processes spawned in parallel the wall time can be equal; what drops is
+process starts, CPU and the output sent back to the model. Adding it to a Go
+CLI costs about 1.7 MB of binary.
 
-| | wall | CPU | bytes back |
-|---|---|---|---|
-| 24 read-only calls, 24 processes sequential | 1,644 ms | 1,228 ms | |
-| 24 calls, 24 processes in parallel | 217 ms | 1,493 ms | |
-| **24 calls, `aos code run`, 1 process** | **217 ms** | **1,012 ms** | |
-| machine snapshot (4 calls), 4 processes parallel | 196 ms | 280 ms | 8,612 |
-| **machine snapshot, `aos code run`** | 220 ms | **260 ms** | **158** |
+## What a program can do
 
-The program for the snapshot reads objects directly:
+A JavaScript subset: `const`/`let`, functions and arrows, destructuring,
+spread, `async`/`await`, `Promise.all`, `try`/`catch`, loops, and static
+relative imports. Programs are checked before they run: unknown operations,
+arguments that break an operation's schema and unsupported syntax are reported
+with `file:line:col`, and nothing runs. Limits on steps, time, call depth,
+string and array size and operation calls stop a run, and a program cannot
+catch them. Running other processes is denied unless the host allows them.
 
-```js
-const [wins, procs, disks, apps] = await Promise.all([
-  ops["window-list"](), ops["process-list"]({ sort: "cpu", top: "5" }),
-  ops["disk-list"](), ops["app-list"]({ running: true }),
-])
-;({ windows: wins.length, topCpu: procs.map(p => p.name), disks: disks.length, runningApps: apps.length })
-```
+It is **not a sandbox for hostile code**: operations run with your CLI's
+privileges, so register only what an agent may do.
 
-So: against one process per command run sequentially, CLI CodeMode is several
-times faster; against the same commands spawned in parallel the wall time is
-about even, with less CPU and a tiny answer instead of the raw output. Calling
-the same CLI repeatedly from one session through its persistent MCP server costs
-0.12 ms per call vs 4.68 ms for a new process (demo CLI).
+## Docs
 
-### JSON objects, not text
+- Site: https://muthuishere.github.io/clicodemode/
+- [docs/SPEC.md](docs/SPEC.md): the normative spec, every requirement tested
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
+  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) ·
+  [CONTRIBUTING.md](CONTRIBUTING.md)
 
-Operations return JSON values; failures throw. A host wrapping existing
-commands gets this with one option:
-
-```go
-reg.MustRegister(cmdtree.FromRunner("ctx.query", "Find symbols", runQuery,
-    cmdtree.WithJSONResult("--json"), // append --json, return the parsed value, throw on failure
-    cmdtree.WithFlagsLast(),           // for commands that read positionals first
-    cmdtree.WithSideEffects(codemode.SideEffectNone)))
-```
-
-Check which build a runner sees with `mycli code version`.
-
-## Performance
-
-Same work, fresh process each run, medians, Apple Silicon:
-
-| | YAML (`aos batch`) | **CodeMode JS** | Node.js JS |
-|---|---|---|---|
-| 20-step workflow | 9 ms | **3 ms** | 48 ms |
-| 1M-iteration loop (YAML can't express it) | n/a | **55 ms** | 25 ms |
-
-Workflows (steps that call operations) are fastest on CodeMode: no runtime to
-boot. Tight compute loops are within ~2x of Node's JIT; heavy compute belongs
-in a Go operation, which runs at native speed.
-
-Adding CodeMode to a CLI costs **+1.7 MB** (stripped binary: 2.5 MB plain Go
-CLI to 4.2 MB); the optional MCP adapter adds 0.02 MB more. One dependency:
-`gopkg.in/yaml.v3`.
-
-### YAML streams vs Node.js
-
-12.2 MB, 20,000 Kubernetes-style documents, Apple Silicon, medians
-(`js/yaml_bench_test.go`; Node 24, js-yaml 4.1.0, yaml 2.6.1):
-
-| parser | time |
-|---|---|
-| Node `js-yaml` `loadAll` (V8 JIT, warmed) | 213 ms |
-| Go `yaml.v3` raw decode | 480 ms |
-| **CodeMode** `stream(...).yaml().count()` (end to end, ordered JS objects, documents decoded in parallel) | 219 ms |
-| Node `yaml` `parseAllDocuments().toJS()` | 2,924 ms |
-
-Small input, fresh process each run (what a CLI call actually costs):
-Node + js-yaml **30 ms**, `democli code run` with `.yaml()` **4 ms**.
-
-So: for one-shot CLI and agent calls CodeMode is ~7x faster because there is
-no runtime to boot. On big files CodeMode matches js-yaml by decoding
-independent documents in parallel (in order) on all cores; no pure-Go YAML
-library was faster single-threaded (yaml.v2 similar, goccy/go-yaml ~3x
-slower). CodeMode is ~13x faster than the `yaml` package.
-
-## Security
-
-The interpreter bounds steps, wall time, call depth and operation
-concurrency, and programs can only reach registered operations. It is **not a
-sandbox for hostile code**: operations run with your CLI's privileges.
-Register only what you would let a program do; use `Policy.Allow` to gate.
-
-Docs: [docs/SPEC.md](docs/SPEC.md) (normative, every requirement tested) ·
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
-[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) · [code/SKILL.md](code/SKILL.md)
+MIT licensed.
