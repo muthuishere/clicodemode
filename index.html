@@ -102,7 +102,7 @@ const r = await $`aos code run - --input ${JSON.stringify(input)} --json &lt; pr
   <p class="note">Model round trips are the same either way (one). What changes is processes, CPU, and how much raw output flows back.</p>
 
   <h3 class="sub">Measured on real CLIs</h3>
-  <p class="note" style="margin-top:0">Same task both ways, medians, Apple Silicon. "One process per command" is how a Claude Code Code Mode snippet calls a CLI today. Proven on <a href="https://github.com/muthuishere/aos">aos</a> and ctx-optimize (integration branches, pending release); not yet shipped in either.</p>
+  <p class="note" style="margin-top:0">Same task both ways, medians, Apple Silicon. "One process per command" is how a Claude Code Code Mode snippet calls a CLI today. Proven on aos and ctx-optimize (integration branches, pending release); not yet shipped in either.</p>
 
   <p style="margin:18px 0 8px"><strong>ctx-optimize</strong>: query, then <code>card</code> on the top 5 hits, then <code>change_plan</code> (7 calls)</p>
   <div class="tablewrap"><table style="min-width:520px">
