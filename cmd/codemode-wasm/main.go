@@ -24,9 +24,15 @@
 // Sync, return a JSON string: operations(id), describe(id,name),
 // capabilities(id), check(id,src,file), compile(id,src,file).
 // Sync, return plain text: docs(id), skill(id), version().
-// Async, Promise<JSON string>: run(id,src,file,inputJson),
-// eval(id,expr,inputJson). The JSON is codemode.Result plus a "stdout"
-// string holding everything the program printed.
+// Async, Promise<JSON string>: run(id,src,file,inputJson,callId,timeoutMs),
+// eval(id,expr,inputJson,callId,timeoutMs). callId (string, optional) names
+// the call so cancel(callId) can abort it; timeoutMs (decimal string,
+// optional) bounds this call in addition to the engine's limits. Cancelling
+// or timing out cancels the Go context: the interpreter stops and any host
+// operation still pending is abandoned (its JS promise is left unresolved
+// and ignored). The JSON is codemode.Result plus a "stdout" string holding
+// everything the program printed.
+// cancel(callId) -> true if a call with that id was running.
 //
 // Unknown ids and similar caller errors return {"error":"..."} JSON.
 // exec/execStream/shell are unavailable on wasm (Policy.Exec is zero, so
@@ -38,6 +44,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall/js"
@@ -63,7 +70,37 @@ var (
 	mu      sync.Mutex
 	engines = map[int]*codemode.Engine{}
 	nextID  = 1
+
+	calls = map[string]context.CancelFunc{} // running calls by callId, guarded by mu
 )
+
+// callCtx returns the context for one run/eval call and a release func.
+// Caveat: js/wasm has no preemption, so while the interpreter runs a CPU-bound
+// loop no timer or JS callback can fire; timeout/cancel take effect only when
+// the program awaits a host operation (or finishes). CPU loops are bounded by
+// Limits.MaxSteps.
+func callCtx(callID, timeoutMS string) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	if ms, err := strconv.ParseInt(timeoutMS, 10, 64); err == nil && ms > 0 {
+		var c2 context.CancelFunc
+		ctx, c2 = context.WithTimeout(ctx, time.Duration(ms)*time.Millisecond)
+		prev := cancel
+		cancel = func() { c2(); prev() }
+	}
+	if callID != "" {
+		mu.Lock()
+		calls[callID] = cancel
+		mu.Unlock()
+	}
+	return ctx, func() {
+		cancel()
+		if callID != "" {
+			mu.Lock()
+			delete(calls, callID)
+			mu.Unlock()
+		}
+	}
+}
 
 func get(id js.Value) (*codemode.Engine, error) {
 	mu.Lock()
@@ -118,13 +155,16 @@ func await(ctx context.Context, v js.Value) (js.Value, error) {
 		ch <- res{err: errors.New(msg)}
 		return nil
 	})
-	defer ok.Release()
-	defer bad.Release()
 	v.Call("then", ok, bad)
 	select {
 	case r := <-ch:
+		ok.Release()
+		bad.Release()
 		return r.v, r.err
 	case <-ctx.Done():
+		// Abandoned: the promise may still settle later, so the callbacks
+		// are deliberately not released (a released func would be called).
+		// ch is buffered, so a late settle never blocks.
 		return js.Undefined(), ctx.Err()
 	}
 }
@@ -184,11 +224,10 @@ func create(this js.Value, a []js.Value) any {
 			if strings.TrimSpace(text) == "" {
 				return nil, nil
 			}
-			var out any
-			if err := json.Unmarshal([]byte(text), &out); err != nil {
-				return nil, fmt.Errorf("operation returned invalid JSON: %v", err)
+			if !json.Valid([]byte(text)) {
+				return nil, errors.New("operation returned invalid JSON")
 			}
-			return out, nil
+			return codemode.OrderedJSON([]byte(text)), nil
 		}
 		if err := reg.Register(op); err != nil {
 			return map[string]any{"error": err.Error()}
@@ -240,7 +279,7 @@ func promiseFn(f func(e *codemode.Engine, s []string) string) js.Func {
 	return js.FuncOf(func(_ js.Value, a []js.Value) any {
 		var e *codemode.Engine
 		var gerr error
-		s := []string{"", "", "", ""}
+		s := []string{"", "", "", "", "", ""}
 		if len(a) == 0 {
 			gerr = errors.New("missing engine id")
 		} else {
@@ -301,6 +340,18 @@ func main() {
 		"operations": syncFn(func(e *codemode.Engine, _ []string) string {
 			return jsonOf(e.Registry.Operations())
 		}),
+		"cancel": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			if len(a) == 0 || a[0].Type() != js.TypeString {
+				return false
+			}
+			mu.Lock()
+			cancel, ok := calls[a[0].String()]
+			mu.Unlock()
+			if ok {
+				cancel()
+			}
+			return ok
+		}),
 		"describe": syncFn(func(e *codemode.Engine, s []string) string {
 			op, ok := e.Registry.Lookup(s[0])
 			if !ok {
@@ -322,13 +373,17 @@ func main() {
 		"docs":  syncFn(func(e *codemode.Engine, _ []string) string { return codemode.Docs(e.Registry, "code") }),
 		"skill": syncFn(func(e *codemode.Engine, _ []string) string { return codemode.Skill(e.Registry, "cli code") }),
 		"run": promiseFn(func(e *codemode.Engine, s []string) string {
+			ctx, done := callCtx(s[3], s[4])
+			defer done()
 			return withOutput(e, func(c *codemode.Engine) codemode.Result {
-				return c.RunWithInput(context.Background(), s[0], fileName(s[1]), rawInput(s[2]))
+				return c.RunWithInput(ctx, s[0], fileName(s[1]), rawInput(s[2]))
 			})
 		}),
 		"eval": promiseFn(func(e *codemode.Engine, s []string) string {
+			ctx, done := callCtx(s[2], s[3])
+			defer done()
 			return withOutput(e, func(c *codemode.Engine) codemode.Result {
-				return c.EvalWithInput(context.Background(), s[0], rawInput(s[1]))
+				return c.EvalWithInput(ctx, s[0], rawInput(s[1]))
 			})
 		}),
 	}

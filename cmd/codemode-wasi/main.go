@@ -11,8 +11,11 @@
 //	{"id":N,"method":"operations|capabilities|docs|skill|version"}
 //	{"id":N,"method":"describe","params":{"name":"a.b"}}
 //	{"id":N,"method":"check|compile","params":{"src":"...","file":"prog.js"}}
-//	{"id":N,"method":"run","params":{"src":"...","file":"prog.js","input":<json>}}
-//	{"id":N,"method":"eval","params":{"expr":"1+2","input":<json>}}
+//	{"id":N,"method":"run","params":{"src":"...","file":"prog.js","input":<json>,"timeout_ms":0}}
+//	{"id":N,"method":"eval","params":{"expr":"1+2","input":<json>,"timeout_ms":0}}
+//
+// timeout_ms, when positive, replaces the create-time timeout for that one
+// run or eval.
 //
 // Engine -> host:
 //
@@ -136,14 +139,9 @@ func hostCall(name string, args map[string]any) (any, error) {
 				}
 				return nil, fmt.Errorf("%s", r.Error)
 			}
-			if len(r.Result) == 0 {
-				return nil, nil
-			}
-			var v any
-			if err := json.Unmarshal(r.Result, &v); err != nil {
-				return nil, fmt.Errorf("bad result from host: %v", err)
-			}
-			return v, nil
+			// OrderedJSON keeps the host's object key order (LANG-6); empty is
+			// null and invalid JSON rejects the call.
+			return codemode.OrderedJSON(r.Result), nil
 		}
 		line, err := readLine()
 		if err != nil {
@@ -250,6 +248,7 @@ func handle(r request) (any, error) {
 		var p struct {
 			Src, File string
 			Input     json.RawMessage
+			TimeoutMS int64 `json:"timeout_ms"`
 		}
 		if err := decode(r.Params, &p); err != nil {
 			return nil, err
@@ -257,18 +256,32 @@ func handle(r request) (any, error) {
 		if p.File == "" {
 			p.File = "program.js"
 		}
+		defer withTimeout(p.TimeoutMS)()
 		return engine.RunWithInput(ctx, p.Src, p.File, nullToEmpty(p.Input)), nil
 	case "eval":
 		var p struct {
-			Expr  string
-			Input json.RawMessage
+			Expr      string
+			Input     json.RawMessage
+			TimeoutMS int64 `json:"timeout_ms"`
 		}
 		if err := decode(r.Params, &p); err != nil {
 			return nil, err
 		}
+		defer withTimeout(p.TimeoutMS)()
 		return engine.EvalWithInput(ctx, p.Expr, nullToEmpty(p.Input)), nil
 	}
 	return nil, fmt.Errorf("unknown method %q", r.Method)
+}
+
+// withTimeout overrides the engine timeout for one request and returns the
+// function that restores it. Requests are handled one at a time.
+func withTimeout(ms int64) func() {
+	if ms <= 0 {
+		return func() {}
+	}
+	prev := engine.Policy.Limits.Timeout
+	engine.Policy.Limits.Timeout = time.Duration(ms) * time.Millisecond
+	return func() { engine.Policy.Limits.Timeout = prev }
 }
 
 func nullToEmpty(b json.RawMessage) json.RawMessage {
