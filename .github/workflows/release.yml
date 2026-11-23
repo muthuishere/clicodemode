@@ -27,10 +27,10 @@ jobs:
 
       - name: Tag equals every package version
         run: |
-          go_v=$(sed -n 's/^const LibraryVersion = "\(.*\)"/\1/p' codemode/registry.go)
-          npm_v=$(sed -n 's/^  "version": "\(.*\)",/\1/p' npm/package.json | head -1)
-          rs_v=$(sed -n 's/^version = "\(.*\)"/\1/p' rust/Cargo.toml | head -1)
-          py_v=$(sed -n 's/^version = "\(.*\)"/\1/p' python/pyproject.toml | head -1)
+          go_v=$(sed -n 's/^const LibraryVersion = "\([^"]*\)".*/\1/p' codemode/registry.go)
+          npm_v=$(sed -n 's/^  "version": "\([^"]*\)".*/\1/p' npm/package.json | head -1)
+          rs_v=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' rust/Cargo.toml | head -1)
+          py_v=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' python/pyproject.toml | head -1)
           echo "tag=${GITHUB_REF_NAME} go=$go_v npm=$npm_v rust=$rs_v python=$py_v"
           for v in "$go_v" "$npm_v" "$rs_v" "$py_v"; do
             [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "version mismatch: $v vs ${GITHUB_REF_NAME}"; exit 1; }
@@ -120,7 +120,19 @@ jobs:
         with:
           name: npm-dist
           path: dist-npm/*
+      - name: Is this version already on npm?
+        id: exists
+        working-directory: npm
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if npm view "clicodemode@$v" version >/dev/null 2>&1; then
+            echo "clicodemode@$v is already on npm: skipping publish"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish with provenance
+        if: steps.exists.outputs.exists != 'true'
         working-directory: npm
         run: npm publish --provenance --access public
 
@@ -150,9 +162,23 @@ jobs:
         with:
           name: crate
           path: rust/target/package/*.crate
+      - name: Is this version already on crates.io?
+        id: exists
+        working-directory: rust
+        run: |
+          v=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' Cargo.toml | head -1)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'User-Agent: clicodemode-release' "https://crates.io/api/v1/crates/clicodemode/$v")
+          if [ "$code" = 200 ]; then
+            echo "clicodemode $v is already on crates.io: skipping publish"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: rust-lang/crates-io-auth-action@v1
+        if: steps.exists.outputs.exists != 'true'
         id: auth
       - name: Publish
+        if: steps.exists.outputs.exists != 'true'
         working-directory: rust
         run: cargo publish --allow-dirty
         env:
