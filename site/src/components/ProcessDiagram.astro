@@ -1,72 +1,77 @@
 ---
-// Three CLI processes vs one `code run` process. Inline SVG, theme tokens only.
+// Normal mode vs agent Code Mode vs CLI CodeMode. Inline SVG, theme tokens only.
 ---
 <figure class="pd" aria-labelledby="pd-cap">
-	<div class="pd-scroll" role="region" tabindex="0" aria-label="Diagram, scroll horizontally on small screens"><svg viewBox="0 0 880 300" role="img" aria-labelledby="pd-title pd-desc">
-		<title id="pd-title">Three processes versus one</title>
-		<desc id="pd-desc">Left: the agent runs one JavaScript program (as in Claude Code Code Mode) whose shell calls still start aos three times; each process boots, parses its arguments, runs one command and prints text. Right: the agent starts aos once with code run; one process calls three registered operations in parallel and returns one JSON value.</desc>
+	<div class="pd-scroll" role="region" tabindex="0" aria-label="Diagram, scroll horizontally on small screens"><svg viewBox="0 0 1010 310" role="img" aria-labelledby="pd-title pd-desc">
+		<title id="pd-title">Normal mode, agent Code Mode and CLI CodeMode</title>
+		<desc id="pd-desc">Three ways an agent does the same three aos actions. Normal mode: three tool calls, each starting aos. Agent Code Mode: one JavaScript program whose three shell calls still start aos three times. CLI CodeMode: one program sent to aos code run, one process calling three registered operations and returning one JSON value.</desc>
 		<defs>
 			<marker id="pd-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="pd-fill-muted"/></marker>
 		</defs>
-
-		<!-- left panel -->
-		<text x="20" y="26" class="pd-h">Agent Code Mode: one program, three processes</text>
-		<rect x="20" y="44" width="92" height="232" rx="8" class="pd-agent"/>
-		<text x="66" y="150" class="pd-lbl" text-anchor="middle">agent</text>
-		<text x="66" y="172" class="pd-tiny" text-anchor="middle">JS program</text>
-		<text x="66" y="188" class="pd-tiny" text-anchor="middle">$`aos …` ×3</text>
-		<g class="pd-procs">
-			{[0, 1, 2].map((i) => {
-				const y = 52 + i * 78;
-				const cmd = ['window move', 'display brightness', 'open'][i];
-				return (
-					<g class={`pd-proc pd-d${i}`}>
-						<path d={`M112 ${y + 30} H150`} class="pd-edge" marker-end="url(#pd-arrow)"/>
-						<rect x="154" y={y} width="268" height="60" rx="7" class="pd-box"/>
-						<rect x="166" y={y + 12} width="66" height="16" rx="3" class="pd-boot"/>
-						<text x="199" y={y + 24} class="pd-tiny" text-anchor="middle">start</text>
-						<rect x="238" y={y + 12} width="50" height="16" rx="3" class="pd-boot"/>
-						<text x="263" y={y + 24} class="pd-tiny" text-anchor="middle">parse</text>
-						<rect x="292" y={y + 12} width="118" height="16" rx="3" class="pd-op"/>
-						<text x="351" y={y + 24} class="pd-tiny pd-tiny-op pd-cmd" text-anchor="middle">{cmd}</text>
-						<text x="166" y={y + 48} class="pd-mono">aos {cmd.split(" ")[0]} …</text>
-						<text x="404" y={y + 48} class="pd-tiny" text-anchor="end">text out</text>
-					</g>
-				);
-			})}
-		</g>
-
-		<line x1="448" y1="40" x2="448" y2="280" class="pd-div"/>
-
-		<!-- right panel -->
-		<text x="476" y="26" class="pd-h">CLI CodeMode: one program, one process</text>
-		<rect x="476" y="44" width="92" height="232" rx="8" class="pd-agent"/>
-		<text x="522" y="166" class="pd-lbl" text-anchor="middle">agent</text>
-		<path d="M568 160 H604" class="pd-edge" marker-end="url(#pd-arrow)"/>
-		<rect x="608" y="52" width="252" height="216" rx="9" class="pd-box pd-one"/>
-		<rect x="622" y="66" width="66" height="16" rx="3" class="pd-boot"/>
-		<text x="655" y="78" class="pd-tiny" text-anchor="middle">start</text>
-		<rect x="694" y="66" width="88" height="16" rx="3" class="pd-boot"/>
-		<text x="738" y="78" class="pd-tiny" text-anchor="middle">check program</text>
-		<text x="622" y="106" class="pd-mono">aos code run -</text>
-		<text x="622" y="128" class="pd-tiny">Promise.all, in-process</text>
-		{['window-move', 'display-brightness', 'open'].map((op, i) => (
-			<g class={`pd-par pd-d${i}`}>
-				<rect x="622" y={140 + i * 28} width="224" height="20" rx="4" class="pd-op"/>
-				<text x="634" y={154 + i * 28} class="pd-tiny pd-tiny-op">ops["{op}"]</text>
+		{[
+			{ x: 0, title: '1. Normal mode', sub: '3 tool calls, 3 processes', agent: ['agent', '3 calls', 'in turn'] },
+			{ x: 340, title: '2. Agent Code Mode', sub: '1 JS program, 3 processes', agent: ['agent', 'JS program', '$`aos` ×3'] },
+		].map((pn) => (
+			<g>
+				<text x={pn.x + 10} y="22" class="pd-h">{pn.title}</text>
+				<text x={pn.x + 10} y="40" class="pd-sub">{pn.sub}</text>
+				<rect x={pn.x + 10} y="56" width="78" height="232" rx="8" class="pd-agent"/>
+				<text x={pn.x + 49} y="160" class="pd-lbl" text-anchor="middle">{pn.agent[0]}</text>
+				<text x={pn.x + 49} y="180" class="pd-tiny" text-anchor="middle">{pn.agent[1]}</text>
+				<text x={pn.x + 49} y="195" class="pd-tiny" text-anchor="middle">{pn.agent[2]}</text>
+				{['window move', 'brightness', 'open'].map((cmd, i) => {
+					const y = 62 + i * 78;
+					return (
+						<g class={`pd-proc pd-d${i}`}>
+							<path d={`M${pn.x + 88} ${y + 30} H${pn.x + 116}`} class="pd-edge" marker-end="url(#pd-arrow)"/>
+							<rect x={pn.x + 120} y={y} width="196" height="60" rx="7" class="pd-box"/>
+							<rect x={pn.x + 130} y={y + 11} width="42" height="16" rx="3" class="pd-boot"/>
+							<text x={pn.x + 151} y={y + 23} class="pd-tiny" text-anchor="middle">start</text>
+							<rect x={pn.x + 176} y={y + 11} width="42" height="16" rx="3" class="pd-boot"/>
+							<text x={pn.x + 197} y={y + 23} class="pd-tiny" text-anchor="middle">parse</text>
+							<rect x={pn.x + 222} y={y + 11} width="86" height="16" rx="3" class="pd-op"/>
+							<text x={pn.x + 265} y={y + 23} class="pd-tiny pd-tiny-op pd-cmd" text-anchor="middle">{cmd}</text>
+							<text x={pn.x + 130} y={y + 47} class="pd-mono">aos {['window', 'display', 'open'][i]} …</text>
+							<text x={pn.x + 308} y={y + 47} class="pd-tiny" text-anchor="end">text out</text>
+						</g>
+					);
+				})}
 			</g>
 		))}
-		<text x="622" y="254" class="pd-tiny pd-ok">one JSON value back</text>
+		<line x1="333" y1="54" x2="333" y2="290" class="pd-div"/>
+		<line x1="673" y1="54" x2="673" y2="290" class="pd-div"/>
+
+		<text x="690" y="22" class="pd-h">3. CLI CodeMode</text>
+		<text x="690" y="40" class="pd-sub">1 program, 1 process</text>
+		<rect x="690" y="56" width="78" height="232" rx="8" class="pd-agent"/>
+		<text x="729" y="160" class="pd-lbl" text-anchor="middle">agent</text>
+		<text x="729" y="180" class="pd-tiny" text-anchor="middle">1 program</text>
+		<path d="M768 172 H796" class="pd-edge" marker-end="url(#pd-arrow)"/>
+		<rect x="800" y="62" width="204" height="220" rx="9" class="pd-box pd-one"/>
+		<rect x="812" y="76" width="42" height="16" rx="3" class="pd-boot"/>
+		<text x="833" y="88" class="pd-tiny" text-anchor="middle">start</text>
+		<rect x="858" y="76" width="92" height="16" rx="3" class="pd-boot"/>
+		<text x="904" y="88" class="pd-tiny" text-anchor="middle">check program</text>
+		<text x="812" y="116" class="pd-mono">aos code run -</text>
+		<text x="812" y="136" class="pd-tiny">Promise.all, in-process</text>
+		{['window-move', 'display-brightness', 'open'].map((op, i) => (
+			<g class={`pd-par pd-d${i}`}>
+				<rect x="812" y={148 + i * 28} width="180" height="20" rx="4" class="pd-op"/>
+				<text x="822" y={162 + i * 28} class="pd-tiny pd-tiny-op">ops["{op}"]</text>
+			</g>
+		))}
+		<text x="812" y="266" class="pd-tiny pd-ok">one JSON value back</text>
 	</svg></div>
-	<figcaption id="pd-cap">Same three actions. Left: the agent writes one program, but each <code>$`aos …`</code> call is still a new aos process with its own start, parse and text output. Right: one start, one checked program, operations called in parallel inside the process.</figcaption>
+	<figcaption id="pd-cap">Same three actions. In normal mode the agent makes three tool calls and aos starts three times. Agent Code Mode cuts the tool calls to one program, but each <code>$`aos …`</code> in it still starts aos. CLI CodeMode sends one program to the CLI: one start, one checked program, operations called in parallel inside the process.</figcaption>
 </figure>
 
 <style>
 	.pd { margin: 0; }
 	.pd-scroll { overflow-x: auto; }
-	.pd svg { width: 100%; min-width: 880px; height: auto; display: block; }
+	.pd svg { width: 100%; min-width: 960px; height: auto; display: block; }
 	.pd-cmd { font-size: 9.5px; }
 	.pd-h { font: 600 13px var(--cc-sans); fill: var(--cc-text); }
+	.pd-sub { font: 500 11px var(--cc-mono); fill: var(--cc-text-3); }
 	.pd-lbl { font: 600 13px var(--cc-sans); fill: var(--cc-text-2); }
 	.pd-mono { font: 500 12px var(--cc-mono); fill: var(--cc-text); }
 	.pd-tiny { font: 500 10.5px var(--cc-mono); fill: var(--cc-text-3); }

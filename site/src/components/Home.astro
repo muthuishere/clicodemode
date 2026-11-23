@@ -6,6 +6,10 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const href = (p: string) => `${base}${p}`;
 const GH = 'https://github.com/muthuishere/clicodemode';
 
+const normalCalls = `aos window move Safari --zone=1A --monitor=2
+aos display brightness 70
+aos open https://youtube.com`;
+
 const threeProcs = `await Promise.all([
   $\`aos window move Safari --zone=1A --monitor=2\`.nothrow(),
   $\`aos display brightness 70\`.nothrow(),
@@ -156,22 +160,27 @@ $ echo $?
 
 	<section class="band" aria-labelledby="h-compare">
 		<p class="kicker">01 / The difference</p>
-		<h2 id="h-compare">Three commands, or one program?</h2>
+		<h2 id="h-compare">Three tool calls, one program, or one process?</h2>
 		<p class="lede">Move a window, set the brightness, open a page. The work is the same. What changes is how many times the CLI boots.</p>
-		<div class="split">
+		<div class="split split3">
 			<div class="col">
-				<div class="col-h"><span class="tag">3 processes</span> agent Code Mode, one per <code>$</code> call</div>
-				<Code code={threeProcs} lang="js" title="Claude Code Code Mode program" wrap />
-				<p class="note">The agent writes one program, but each <code>$`aos …`</code> starts <code>aos</code> again: it parses arguments, runs one command and prints text the program parses back. The README measures about 66 ms per <code>aos</code> start.</p>
+				<div class="col-h"><span class="tag">3 calls · 3 processes</span> normal mode</div>
+				<Code code={normalCalls} lang="sh" title="3 Bash tool calls" wrap />
+				<p class="note">The agent makes one tool call per command and reads each text output before the next. Every call starts <code>aos</code>.</p>
 			</div>
 			<div class="col">
-				<div class="col-h"><span class="tag tag-accent">1 process</span> <code>aos code run</code></div>
-				<Code code={oneProgram} lang="js" title="prog.js" wrap />
-				<p class="note">Checked before it ran: <code>aos code check</code> reports ok, 3 operations. The calls run in parallel inside one process, and the result is JSON.</p>
+				<div class="col-h"><span class="tag">1 program · 3 processes</span> agent Code Mode</div>
+				<Code code={threeProcs} lang="js" title="Claude Code Code Mode program" wrap />
+				<p class="note">One program instead of three tool calls, but each <code>$`aos …`</code> still starts <code>aos</code>, parses arguments and prints text.</p>
+			</div>
+			<div class="col">
+				<div class="col-h"><span class="tag tag-accent">1 program · 1 process</span> CLI CodeMode</div>
+				<Code code={oneProgram} lang="js" title="aos code run -" wrap />
+				<p class="note">Checked first (<code>aos code check</code>: ok, 3 operations). The calls run in parallel inside one <code>aos</code> process; one JSON value comes back.</p>
 			</div>
 		</div>
 		<div class="diagram"><ProcessDiagram />
-		<p class="note">Observed on 2026-11-23 in Claude Code 2.1.330 with Code Mode on: its program ran the three commands in parallel as three aos processes (three PIDs in a wrapper log). <code>aos code run</code> did the same actions as one process.</p></div>
+		<p class="note">Observed on 2026-11-23 with Claude Code 2.1.330 and a wrapper that logs every <code>aos</code> start. Normal mode: three tool calls, three processes started one after another. Code Mode on: one program, three processes started together. <code>aos code run</code>: one process.</p></div>
 	</section>
 
 	<section class="band" aria-labelledby="h-real">
@@ -333,6 +342,9 @@ $ echo $?
 	.home a { color: var(--cc-accent); }
 
 	.split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+	.split3 { grid-template-columns: repeat(3, 1fr); gap: 1.1rem; }
+	@media (max-width: 1100px) { .split3 { grid-template-columns: 1fr; } }
+	.split3 .col-h { height: auto; min-height: 1.9rem; flex-wrap: wrap; }
 	.col { min-width: 0; display: flex; flex-direction: column; }
 	.col-h { font-size: 0.9rem; color: var(--cc-text-2); margin: 0 0 0.6rem; display: flex; gap: 0.5rem; align-items: center; height: 1.9rem; }
 	.col > :global(*) { margin-top: 0 !important; }
