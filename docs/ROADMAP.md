@@ -35,10 +35,17 @@ Each step ships on its own, with tests.
    grouped for large CLIs).
 9. **ctx-optimize (done, shipped in ctx-optimize v0.16.1)**: `ctx-optimize code` over its read-only
    verbs with `cmdtree.WithJSONResult` and `WithFlagsLast`.
+10. **Sessions and language (done, v0.7.0)**: `Engine.NewSession` keeps one
+   top-level scope across runs (per-run timeout and cancel, detach and `Poll`,
+   captured console events, `Vars`/`Reset`); regex on RE2, `switch`, classes
+   with `new`/`this`/`super`/`instanceof`, `Map`/`Set`/`Date`, tagged
+   templates. Built for karya's agent REPL; approval, quoting and output caps
+   stay with the host.
 
 Next candidates: a benchmark measuring model turns and tokens with a real agent,
 `code run --plan` with a host approval hook for external side effects,
 `code run --stats`, a `codemode init` scaffolder.
 
-Known interpreter gaps to close as needed: labelled statements, `switch`,
-regex, getters/setters, live module bindings, microtask ordering.
+Known interpreter gaps to close as needed: labelled statements, getters/setters,
+regex lookaround, live module bindings, microtask ordering. Sessions are Go-only
+for now; the Python, TypeScript and Rust wrappers get the language changes.
