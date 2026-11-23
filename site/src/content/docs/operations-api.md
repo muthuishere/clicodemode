@@ -82,7 +82,7 @@ type Diagnostic struct {
 ```go
 type Policy struct {
 	Allow      func(ctx context.Context, op *Operation) error // consulted before every call
-	Limits     js.Limits                                      // MaxSteps, MaxCallDepth, MaxConcurrency, Timeout
+	Limits     js.Limits                                      // MaxSteps, MaxCallDepth, MaxConcurrency, MaxStringBytes, MaxArrayLen, MaxOps, Timeout
 	ModuleRoot string                                         // imports are confined here
 	Exec       ExecPolicy                                     // processes; empty = denied
 }

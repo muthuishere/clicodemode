@@ -18,6 +18,9 @@ type Limits struct {
 	MaxCallDepth   int           // nested function calls (default 512)
 	MaxConcurrency int           // host operations in flight at once (default 8)
 	Timeout        time.Duration // wall clock for the whole run (default none; use ctx)
+	MaxOps         int64         // host operation calls per run (default 0: unlimited)
+	MaxStringBytes int           // longest string a program may build (default 64 MiB)
+	MaxArrayLen    int           // longest array a program may build (default 10,000,000)
 }
 
 // ModuleLoader resolves a static import. from is the importing file ("" for
@@ -51,6 +54,7 @@ type Interp struct {
 	globals *Env
 	gil     fifoLock
 	steps   atomic.Int64
+	ops     atomic.Int64
 	tasks   sync.WaitGroup
 	sem     chan struct{}
 	modules map[string]*module
@@ -144,6 +148,12 @@ func New(ctx context.Context, cfg Config) *Interp {
 	}
 	if cfg.Limits.MaxCallDepth == 0 {
 		cfg.Limits.MaxCallDepth = 512
+	}
+	if cfg.Limits.MaxStringBytes == 0 {
+		cfg.Limits.MaxStringBytes = 64 << 20
+	}
+	if cfg.Limits.MaxArrayLen == 0 {
+		cfg.Limits.MaxArrayLen = 10_000_000
 	}
 	if cfg.Limits.MaxConcurrency == 0 {
 		cfg.Limits.MaxConcurrency = 32 // operations are mostly I/O; hosts lower it for heavy ones
@@ -309,6 +319,39 @@ func (r *Runner) positioned(n Node, err error) error {
 
 // ErrBudget is returned when the step budget is exhausted.
 var ErrBudget = errors.New("step budget exceeded")
+
+// ErrSizeLimit is returned when a string or array outgrows its limit.
+var ErrSizeLimit = errors.New("size limit exceeded")
+
+// ErrOpLimit is returned when a run makes more host operation calls than
+// Limits.MaxOps allows.
+var ErrOpLimit = errors.New("operation call limit exceeded")
+
+// sizeCheck fails the run (uncatchable, like the step budget) when v is a
+// string or array over its limit.
+func (r *Runner) sizeCheck(n Node, v Value) error {
+	switch x := v.(type) {
+	case string:
+		if len(x) > r.it.cfg.Limits.MaxStringBytes {
+			return r.it.fail(&Error{Kind: "runtime", Pos: posOf(n), File: r.file, Msg: fmt.Sprintf("%v: string of %d bytes (limit %d)", ErrSizeLimit, len(x), r.it.cfg.Limits.MaxStringBytes)})
+		}
+	case *Array:
+		if len(x.Elems) > r.it.cfg.Limits.MaxArrayLen {
+			return r.it.fail(&Error{Kind: "runtime", Pos: posOf(n), File: r.file, Msg: fmt.Sprintf("%v: array of %d elements (limit %d)", ErrSizeLimit, len(x.Elems), r.it.cfg.Limits.MaxArrayLen)})
+		}
+	}
+	return nil
+}
+
+// CountOp records one host operation call and fails the run once
+// Limits.MaxOps is exceeded. Hosts call it before starting an operation.
+func (r *Runner) CountOp() error {
+	max := r.it.cfg.Limits.MaxOps
+	if n := r.it.ops.Add(1); max > 0 && n > max {
+		return r.it.fail(&Error{Kind: "runtime", File: r.file, Msg: fmt.Sprintf("%v (limit %d)", ErrOpLimit, max)})
+	}
+	return nil
+}
 
 func (r *Runner) tick(n Node) error {
 	n0 := r.it.steps.Add(1)
@@ -1083,6 +1126,9 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 					return nil, err
 				}
 				b.WriteString(toString(v))
+				if b.Len() > r.it.cfg.Limits.MaxStringBytes {
+					return nil, r.sizeCheck(n, b.String())
+				}
 			}
 		}
 		return b.String(), nil
@@ -1109,6 +1155,9 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 					return nil, err
 				}
 				a.Elems = append(a.Elems, items...)
+				if err := r.sizeCheck(n, a); err != nil {
+					return nil, err
+				}
 				continue
 			}
 			v, err := r.eval(e, env)
@@ -1225,6 +1274,11 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 		if err != nil {
 			return nil, r.throwAt(n, "TypeError", "%s", err.Error())
 		}
+		if n.Op == "+" {
+			if err := r.sizeCheck(n, v); err != nil {
+				return nil, err
+			}
+		}
 		return v, nil
 	case *Logical:
 		l, err := r.eval(n.L, env)
@@ -1337,6 +1391,9 @@ func (r *Runner) evalAssign(n *Assign, env *Env) (Value, error) {
 			v, err = binaryOp(strings.TrimSuffix(n.Op, "="), cur, rhs)
 			if err != nil {
 				return nil, r.throwAt(n, "TypeError", "%s", err.Error())
+			}
+			if err := r.sizeCheck(n, v); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -1527,7 +1584,21 @@ func (r *Runner) Call(fn Value, args ...Value) (Value, error) {
 func (r *Runner) CallWithThis(fn, this Value, args []Value) (Value, error) {
 	switch f := fn.(type) {
 	case *Builtin:
-		return f.Fn(r, this, args)
+		v, err := f.Fn(r, this, args)
+		if err != nil {
+			return v, err
+		}
+		// Builtins that grow a string or array (join, repeat, concat, push,
+		// ...) are held to the same size limits as + and spread.
+		if err := r.sizeCheck(nil, v); err != nil {
+			return nil, err
+		}
+		if a, ok := this.(*Array); ok {
+			if err := r.sizeCheck(nil, a); err != nil {
+				return nil, err
+			}
+		}
+		return v, nil
 	case *Function:
 		if r.depth+1 > r.it.cfg.Limits.MaxCallDepth {
 			return nil, &Error{Kind: "runtime", Pos: f.Decl.P(), File: r.file, Msg: fmt.Sprintf("maximum call depth %d exceeded", r.it.cfg.Limits.MaxCallDepth)}

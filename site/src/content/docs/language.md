@@ -81,6 +81,9 @@ argv is an array and is never shell-interpreted; a non-zero exit is a result, no
 | `MaxSteps` (statements, calls, loop iterations) | 10,000,000 |
 | `MaxCallDepth` | 512 |
 | `MaxConcurrency` (operations in flight) | 32 |
+| `MaxStringBytes` (longest string a program builds) | 64 MiB |
+| `MaxArrayLen` (longest array) | 10,000,000 |
+| `MaxOps` (host operation calls per run) | unlimited |
 | `Timeout` | none (use the caller's context) |
 
 Exceeding a limit or cancellation stops the whole run and **cannot be caught**, including inside async code, `sleep`, an operation or `.catch`.

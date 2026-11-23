@@ -1,7 +1,7 @@
 # CLI CodeMode specification
 
 Spec version `codemode/v0` (the `spec` field of `code capabilities`).
-Implementation: this repository, v0.5.x. Keywords MUST, MUST NOT, SHOULD and
+Implementation: this repository, v0.6.x. Keywords MUST, MUST NOT, SHOULD and
 MAY are normative. Every requirement has an ID; `codemode/spec_test.go`
 checks the CLI-level ones end to end and names the test covering each of the
 others. A change that breaks a requirement is a breaking change.
@@ -55,7 +55,7 @@ and returns only the result.
 |---|---|
 | LANG-1 | Supported constructs follow normal JavaScript semantics: const/let, literals, template literals, objects/arrays, destructuring, spread/rest, all operators incl. `??` `?.` `**`, if/else, ternary, for, for-of, for-in, while, do-while, break/continue, functions, arrows, closures, default params, try/catch/finally/throw, async/await, Promises (`resolve reject all allSettled race any`, `.then .catch .finally`). |
 | LANG-2 | Unsupported constructs (`class new this` generators `switch delete` regex, dynamic `import()`, `eval`) are **parse errors** with a message naming the construct, never silent misbehaviour. |
-| LANG-3 | Static imports: only relative `./` or `../` paths ending `.js` (code) or `.json` (data, default export), confined to the module root; cycles are an error. No npm, no Node or browser APIs, no ambient globals beyond those listed in CAP-4. |
+| LANG-3 | Static imports: only relative `./` or `../` paths ending `.js` (code) or `.json` (data, default export), confined to the module root (after resolving symlinks, so a link inside the root cannot reach a file outside it); cycles are an error. No npm, no Node or browser APIs, no ambient globals beyond those listed in CAP-4. |
 | LANG-4 | Result of a run: the default export (a function is called and awaited), otherwise the last top-level expression statement's value; a promise result is awaited. |
 | LANG-5 | A rejected promise nobody awaited or caught fails the run ("unhandled promise rejection"). |
 | LANG-6 | Object key order follows JS rules (integer-like keys ascending, then insertion order) in iteration and JSON output. |
@@ -64,7 +64,7 @@ and returns only the result.
 
 | ID | Requirement |
 |---|---|
-| LIM-1 | Each run is bounded by `MaxSteps` (default 10M), `MaxCallDepth` (512), `MaxConcurrency` (32) and optional `Timeout`, plus the caller's context. |
+| LIM-1 | Each run is bounded by `MaxSteps` (default 10M), `MaxCallDepth` (512), `MaxConcurrency` (32), `MaxStringBytes` (64 MiB per string), `MaxArrayLen` (10M elements), optional `MaxOps` (host operation calls per run) and optional `Timeout`, plus the caller's context. |
 | LIM-2 | Exceeding a limit or cancellation stops the whole run and MUST NOT be catchable, including when it surfaces as a rejection inside async code, `sleep`, an operation or `.catch`. |
 | LIM-3 | On cancellation, pending operations receive a cancelled context, child processes are killed and streams closed. |
 

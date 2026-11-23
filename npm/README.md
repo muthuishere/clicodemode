@@ -8,18 +8,18 @@ This package is a **thin wrapper around the Go engine compiled to WebAssembly**.
 It is not a native TypeScript interpreter. The Go engine owns parsing,
 language semantics and validation (diagnostics with file:line:col); this
 package only loads it, passes your handlers in and returns its results.
-Status: **experimental**, version 0.6.1. The Go project is the reference.
+Status: **experimental**, version 0.6.2. The Go project is the reference.
 
 ## Install (no npm registry needed)
 
 The package is not published to the npm registry. Pick one:
 
-**a) From a GitHub release asset** (the URL is valid once the v0.6.1 release
+**a) From a GitHub release asset** (the URL is valid once the v0.6.2 release
 exists; the release workflow attaches the tarball produced by `npm pack`
 after the WASM is built):
 
 ```sh
-npm install https://github.com/muthuishere/clicodemode/releases/download/v0.6.1/clicodemode-0.6.1.tgz
+npm install https://github.com/muthuishere/clicodemode/releases/download/v0.6.2/clicodemode-0.6.2.tgz
 ```
 
 **b) From source** (needs Go and Node >= 20):
@@ -28,7 +28,7 @@ npm install https://github.com/muthuishere/clicodemode/releases/download/v0.6.1/
 git clone https://github.com/muthuishere/clicodemode && cd clicodemode
 bash scripts/build-wasm.sh
 cd npm && npm ci && npm run build
-npm pack            # -> clicodemode-0.6.1.tgz, install it anywhere with npm install <path>
+npm pack            # -> clicodemode-0.6.2.tgz, install it anywhere with npm install <path>
 ```
 
 `npm run verify-pack` packs the tarball, installs it into a fresh directory

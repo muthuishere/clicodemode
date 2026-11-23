@@ -31,7 +31,11 @@ eng.Policy.Allow = func(ctx context.Context, op *codemode.Operation) error {
 
 ### Limits
 
-`js.Limits{MaxSteps, MaxCallDepth, MaxConcurrency, Timeout}` (defaults 10M, 512, 32, none) plus the caller's context. Hitting a limit or cancelling stops the run; it cannot be caught. On cancellation, handlers get a cancelled context, child processes are killed and streams closed.
+`js.Limits{MaxSteps, MaxCallDepth, MaxConcurrency, MaxStringBytes, MaxArrayLen, MaxOps, Timeout}` (defaults 10M, 512, 32, 64 MiB, 10M, unlimited, none) plus the caller's context. Hitting a limit or cancelling stops the run; it cannot be caught. On cancellation, handlers get a cancelled context, child processes are killed and streams closed.
+
+### Imports
+
+Static imports are confined to the module root. Symlinks are resolved before the check, so a link inside the root cannot make an import read a file outside it (fixed in v0.6.2).
 
 ### `ExecPolicy`
 

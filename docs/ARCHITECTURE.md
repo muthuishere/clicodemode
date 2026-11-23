@@ -92,7 +92,7 @@ depends on that ordering is fragile in JS too.
 
 ### Limits and cancellation
 
-`Limits{MaxSteps, MaxCallDepth, MaxConcurrency, Timeout}` plus the caller's
+`Limits{MaxSteps, MaxCallDepth, MaxConcurrency, MaxStringBytes, MaxArrayLen, MaxOps, Timeout}` plus the caller's
 `context.Context`. Exceeding a limit or cancellation stops the whole run and is
 **not catchable** by the program, including when it surfaces as a rejection
 from `sleep`, an operation or an async callee (`catch` and `.catch` refuse to

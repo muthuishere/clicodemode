@@ -607,6 +607,9 @@ func freeze(o *js.Object) {
 
 // invoke validates and starts an operation, returning a promise.
 func (e *Engine) invoke(r *js.Runner, name string, a js.Value) (js.Value, error) {
+	if err := r.CountOp(); err != nil {
+		return nil, err
+	}
 	op, ok := e.Registry.Lookup(name)
 	if !ok {
 		msg := fmt.Sprintf("unknown operation %q", name)
@@ -701,6 +704,12 @@ func normalizeJSON(v any) any {
 // loader confines static imports to the module root (default: the entry
 // program's directory). Only .js (code) and .json (data, default export)
 // files can be imported. Programs read from stdin cannot import.
+// within reports whether path p is root or inside it.
+func within(root, p string) bool {
+	rel, err := filepath.Rel(root, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
 func (e *Engine) loader(entry string) js.ModuleLoader {
 	root := e.Policy.ModuleRoot
 	if root == "" && entry != "" && !strings.HasPrefix(entry, "<") {
@@ -724,10 +733,23 @@ func (e *Engine) loader(entry string) js.ModuleLoader {
 		p := filepath.Clean(filepath.Join(base, spec))
 		absRoot, _ := filepath.Abs(root)
 		absP, _ := filepath.Abs(p)
-		if rel, err := filepath.Rel(absRoot, absP); err != nil || strings.HasPrefix(rel, "..") {
+		if !within(absRoot, absP) {
 			return "", "", fmt.Errorf("%s is outside the module root %s", spec, root)
 		}
-		b, err := os.ReadFile(p)
+		// Symlinks are resolved before the containment check, so a link inside
+		// the root cannot point an import at a file outside it.
+		realRoot, err := filepath.EvalSymlinks(absRoot)
+		if err != nil {
+			return "", "", err
+		}
+		realP, err := filepath.EvalSymlinks(absP)
+		if err != nil {
+			return "", "", err
+		}
+		if !within(realRoot, realP) {
+			return "", "", fmt.Errorf("%s resolves outside the module root %s", spec, root)
+		}
+		b, err := os.ReadFile(realP)
 		if err != nil {
 			return "", "", err
 		}
