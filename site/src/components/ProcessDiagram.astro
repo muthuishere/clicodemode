@@ -1,0 +1,89 @@
+---
+// Three CLI processes vs one `code run` process. Inline SVG, theme tokens only.
+---
+<figure class="pd" aria-labelledby="pd-cap">
+	<div class="pd-scroll" tabindex="0" aria-label="Diagram, scroll horizontally on small screens"><svg viewBox="0 0 880 300" role="img" aria-labelledby="pd-title pd-desc">
+		<title id="pd-title">Three processes versus one</title>
+		<desc id="pd-desc">Left: the agent starts aos three times; each process boots, parses its arguments, runs one command and prints text. Right: the agent starts aos once with code run; one process calls three registered operations in parallel and returns one JSON value.</desc>
+		<defs>
+			<marker id="pd-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="pd-fill-muted"/></marker>
+		</defs>
+
+		<!-- left panel -->
+		<text x="20" y="26" class="pd-h">Today: one process per command</text>
+		<rect x="20" y="44" width="92" height="232" rx="8" class="pd-agent"/>
+		<text x="66" y="166" class="pd-lbl" text-anchor="middle">agent</text>
+		<g class="pd-procs">
+			{[0, 1, 2].map((i) => {
+				const y = 52 + i * 78;
+				const cmd = ['window move', 'display brightness', 'open'][i];
+				return (
+					<g class={`pd-proc pd-d${i}`}>
+						<path d={`M112 ${y + 30} H150`} class="pd-edge" marker-end="url(#pd-arrow)"/>
+						<rect x="154" y={y} width="268" height="60" rx="7" class="pd-box"/>
+						<rect x="166" y={y + 12} width="66" height="16" rx="3" class="pd-boot"/>
+						<text x="199" y={y + 24} class="pd-tiny" text-anchor="middle">start</text>
+						<rect x="238" y={y + 12} width="50" height="16" rx="3" class="pd-boot"/>
+						<text x="263" y={y + 24} class="pd-tiny" text-anchor="middle">parse</text>
+						<rect x="292" y={y + 12} width="118" height="16" rx="3" class="pd-op"/>
+						<text x="351" y={y + 24} class="pd-tiny pd-tiny-op pd-cmd" text-anchor="middle">{cmd}</text>
+						<text x="166" y={y + 48} class="pd-mono">aos {cmd.split(" ")[0]} …</text>
+						<text x="404" y={y + 48} class="pd-tiny" text-anchor="end">text out</text>
+					</g>
+				);
+			})}
+		</g>
+
+		<line x1="448" y1="40" x2="448" y2="280" class="pd-div"/>
+
+		<!-- right panel -->
+		<text x="476" y="26" class="pd-h">CLI CodeMode: one program, one process</text>
+		<rect x="476" y="44" width="92" height="232" rx="8" class="pd-agent"/>
+		<text x="522" y="166" class="pd-lbl" text-anchor="middle">agent</text>
+		<path d="M568 160 H604" class="pd-edge" marker-end="url(#pd-arrow)"/>
+		<rect x="608" y="52" width="252" height="216" rx="9" class="pd-box pd-one"/>
+		<rect x="622" y="66" width="66" height="16" rx="3" class="pd-boot"/>
+		<text x="655" y="78" class="pd-tiny" text-anchor="middle">start</text>
+		<rect x="694" y="66" width="88" height="16" rx="3" class="pd-boot"/>
+		<text x="738" y="78" class="pd-tiny" text-anchor="middle">check program</text>
+		<text x="622" y="106" class="pd-mono">aos code run -</text>
+		<text x="622" y="128" class="pd-tiny">Promise.all, in-process</text>
+		{['window-move', 'display-brightness', 'open'].map((op, i) => (
+			<g class={`pd-par pd-d${i}`}>
+				<rect x="622" y={140 + i * 28} width="224" height="20" rx="4" class="pd-op"/>
+				<text x="634" y={154 + i * 28} class="pd-tiny pd-tiny-op">ops["{op}"]</text>
+			</g>
+		))}
+		<text x="622" y="254" class="pd-tiny pd-ok">one JSON value back</text>
+	</svg></div>
+	<figcaption id="pd-cap">Same three actions. Left: three starts, three argument parses, three text outputs. Right: one start, one checked program, operations called in parallel inside the process.</figcaption>
+</figure>
+
+<style>
+	.pd { margin: 0; }
+	.pd-scroll { overflow-x: auto; }
+	.pd svg { width: 100%; min-width: 720px; height: auto; display: block; }
+	.pd-cmd { font-size: 9.5px; }
+	.pd-h { font: 600 13px var(--cc-sans); fill: var(--cc-text); }
+	.pd-lbl { font: 600 13px var(--cc-sans); fill: var(--cc-text-2); }
+	.pd-mono { font: 500 12px var(--cc-mono); fill: var(--cc-text); }
+	.pd-tiny { font: 500 10.5px var(--cc-mono); fill: var(--cc-text-3); }
+	.pd-tiny-op { fill: var(--cc-text); }
+	.pd-ok { fill: var(--cc-ok); font-weight: 600; }
+	.pd-agent { fill: var(--cc-bg-sunk); stroke: var(--cc-line-strong); }
+	.pd-box { fill: var(--cc-bg-raised); stroke: var(--cc-line-strong); }
+	.pd-one { stroke: var(--cc-accent); stroke-width: 1.5; }
+	.pd-boot { fill: none; stroke: var(--cc-line-strong); stroke-dasharray: 3 2; }
+	.pd-op { fill: var(--cc-accent-soft); stroke: var(--cc-accent); stroke-opacity: 0.55; }
+	.pd-edge { stroke: var(--cc-text-3); stroke-width: 1.3; fill: none; }
+	.pd-fill-muted { fill: var(--cc-text-3); }
+	.pd-div { stroke: var(--cc-line); stroke-dasharray: 4 4; }
+	figcaption { margin-top: 0.9rem; font-size: 0.86rem; color: var(--cc-text-3); line-height: 1.55; }
+
+	@media (prefers-reduced-motion: no-preference) {
+		.pd-proc, .pd-par { animation: pd-in 0.5s ease-out both; }
+		.pd-d1 { animation-delay: 0.12s; }
+		.pd-d2 { animation-delay: 0.24s; }
+		@keyframes pd-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+	}
+</style>

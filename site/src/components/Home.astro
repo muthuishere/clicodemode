@@ -1,0 +1,374 @@
+---
+import { Code, Tabs, TabItem } from '@astrojs/starlight/components';
+import ProcessDiagram from './ProcessDiagram.astro';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const href = (p: string) => `${base}${p}`;
+const GH = 'https://github.com/muthuishere/clicodemode';
+
+const threeProcs = `aos window move Safari --zone=1A --monitor=2
+aos display brightness 70
+aos open https://youtube.com`;
+
+const oneProgram = `await Promise.all([
+  ops["window-move"]({ args: ["Safari"], zone: "1A", monitor: 2 }),
+  ops["display-brightness"]({ args: ["70"] }),
+  ops.open({ args: ["https://youtube.com"] }),
+])`;
+
+const aosGo = `// internal/groups/code.go
+func newCodeEngine(c *cli.Ctx) *codemode.Engine {
+	reg := codemode.NewRegistry(c.Version)
+	for _, op := range codeOperations(c) { // one operation per batch verb
+		reg.MustRegister(op)
+	}
+	eng := codemode.NewEngine(reg)
+	eng.Stdout = c.Stderr // print() and console.log go to stderr, never into the result
+	return eng
+}
+
+func runCode(c *cli.Ctx, args []string) error {
+	cm := codemode.NewCLI(newCodeEngine(c), "aos code")
+	cm.Stdin, cm.Stdout, cm.Stderr = c.Stdin, c.Stdout, c.Stderr
+	if code := cm.Main(context.Background(), args); code != 0 {
+		return &cli.ExitError{Code: code}
+	}
+	return nil
+}`;
+
+const aosHandler = `// each handler runs the same cli.Invoke path as a batch step
+out := cli.Invoke(c, argv, "")
+if out.Exit != 0 {
+	return nil, fmt.Errorf("exit %d: %s", out.Exit, codeTail(out.Stderr, out.Stdout))
+}
+var j any
+if json.Unmarshal([]byte(out.Stdout), &j) == nil && strings.TrimSpace(out.Stdout) != "" {
+	return j, nil // the program gets the parsed JSON value
+}
+return strings.TrimSpace(out.Stdout), nil`;
+
+const aosProg = `const [wins, procs, disks, apps] = await Promise.all([
+  ops["window-list"](), ops["process-list"]({ sort: "cpu", top: "5" }),
+  ops["disk-list"](), ops["app-list"]({ running: true }),
+])
+;({ windows: wins.length, topCpu: procs.map(p => p.name), disks: disks.length, runningApps: apps.length })`;
+
+const ctxGo = `// internal/app/codemode.go
+func codeRegistry() *codemode.Registry {
+	reg := codemode.NewRegistry(version.Version)
+	ro := func(name, desc string, run cmdtree.Runner) {
+		reg.MustRegister(cmdtree.FromRunner(name, desc, run,
+			cmdtree.WithJSONResult("--json"),
+			cmdtree.WithFlagsLast(), // these verbs parse positionals first
+			cmdtree.WithSideEffects(codemode.SideEffectNone)))
+	}
+	ro("ctx.query", "Find symbols/docs by 2-4 terms. args: [\\"<terms>\\", \\"--budget\\", \\"N\\"].",
+		func(_ context.Context, a []string, o, e io.Writer) error { return cmdQuery(a, o, e) })
+	ro("ctx.card", "Inspect one symbol: signature, doc, callers. args: [\\"<label>\\"].",
+		func(_ context.Context, a []string, o, _ io.Writer) error { return cmdCard(a, o) })
+	// ... change_plan, affected, path, hubs
+	return reg
+}`;
+
+const ctxProg = `const q = await ops.ctx.query({ args: [input.terms, "--budget", "1500"] })
+const hits = q.hits.slice(0, 3)
+const cards = await Promise.all(hits.map(h => ops.ctx.card({ args: [h.node.label] })))
+cards.map(c => ({ symbol: c.node.label, at: c.node.source + ":" + c.node.location, sig: c.signature }))`;
+
+const ctxOut = `$ ctx-optimize code run - --input '{"terms":"change plan"}' --json < prog.js
+{
+  "ok": true,
+  "value": [
+    { "at": "internal/app/changeplan.go:L34-L45", "sig": "changePlan struct", "symbol": "changePlan" },
+    { "at": "internal/app/changeplan.go:L55-L198",
+      "sig": "func cmdChangePlan(args []string, stdout io.Writer) error", "symbol": "cmdChangePlan" },
+    { "at": "internal/app/changeplan.go:L47-L51", "sig": "planConfidence struct", "symbol": "planConfidence" }
+  ],
+  "ms": 15
+}`;
+
+const qsInstall = `go get github.com/muthuishere/clicodemode@latest && go mod tidy`;
+const qsRegister = `reg := codemode.NewRegistry("mycli 1.4.0")
+reg.MustRegister(codemode.Operation{
+	Name:        "health.check",
+	Description: "Report whether this machine is healthy.",
+	InputSchema: json.RawMessage(\`{"type":"object","properties":{"verbose":{"type":"boolean"}}}\`),
+	SideEffects: codemode.SideEffectNone,
+	Idempotent:  true,
+	Handler: func(ctx context.Context, args map[string]any) (any, error) {
+		return existingHealthCheck(args["verbose"] == true), nil // wrap, don't rewrite
+	},
+})`;
+const qsWrap = `fs := flag.NewFlagSet("status", flag.ContinueOnError) // or your existing one
+fs.Bool("short", false, "short output")
+reg.MustRegister(cmdtree.FromFlagSet("repo.status", "Show repo status.", fs,
+	func(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+		return runStatus(args, stdout) // existing command body, unchanged
+	}))`;
+const qsMount = `// in your command dispatch: mycli code <subcommand>
+if len(os.Args) > 1 && os.Args[1] == "code" {
+	os.Exit(codemode.NewCLI(codemode.NewEngine(reg), "mycli code").Main(ctx, os.Args[2:]))
+}`;
+const qsAgent = `mycli code capabilities --json      # operations, schemas, fingerprint to cache on
+mycli code check prog.js            # file:line:col diagnostics; exit 2 and nothing runs
+mycli code run - --input '{"verbose":true}' --json < prog.js
+# {"ok": true, "value": ..., "ms": 3}`;
+const qsCheck = `$ echo 'await ops.helth.check({})' | democli code check -
+<stdin>:1:16: error: unknown operation "helth.check" (did you mean "health.check"?)
+1 error(s)
+$ echo $?
+2`;
+---
+
+<div class="home">
+	<section class="hero">
+		<p class="eyebrow"><span class="dot" aria-hidden="true"></span> Go library <span class="sep">/</span> v0.5.2 <span class="sep">/</span> MIT</p>
+		<h1>Your agent has Code Mode. <span class="accent">Does your CLI?</span></h1>
+		<p class="deck">
+			Claude Code and OpenAI Codex can compose tool calls through generated programs. But if that code invokes a
+			CLI five times, the CLI still starts five times. What if the CLI itself ran one program and called its
+			registered operations in one process?
+		</p>
+		<p class="pitch">
+			CLI CodeMode is an embeddable Go library for existing CLIs: register the commands you have, expose
+			<code>code</code>, and agents send one program. It is not a new agent; it complements agent-side Code Mode.
+		</p>
+		<div class="ctas">
+			<a class="btn primary" href={href('/getting-started/')}>Get started <span aria-hidden="true">→</span></a>
+			<a class="btn" href={GH}>
+				<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+				GitHub
+			</a>
+		</div>
+		<div class="install"><Code code={qsInstall} lang="sh" /></div>
+	</section>
+
+	<section class="band" aria-labelledby="h-compare">
+		<p class="kicker">01 / The difference</p>
+		<h2 id="h-compare">Three commands, or one program?</h2>
+		<p class="lede">Move a window, set the brightness, open a page. The work is the same. What changes is how many times the CLI boots.</p>
+		<div class="split">
+			<div class="col">
+				<div class="col-h"><span class="tag">3 processes</span> one per command</div>
+				<Code code={threeProcs} lang="sh" title="shell" wrap />
+				<p class="note">Each line starts <code>aos</code>, parses arguments, runs one command and prints text the caller parses back. The README measures about 66 ms per <code>aos</code> start.</p>
+			</div>
+			<div class="col">
+				<div class="col-h"><span class="tag tag-accent">1 process</span> <code>aos code run</code></div>
+				<Code code={oneProgram} lang="js" title="prog.js" wrap />
+				<p class="note">Checked before it ran: <code>aos code check</code> reports ok, 3 operations. The calls run in parallel inside one process, and the result is JSON.</p>
+			</div>
+		</div>
+		<div class="diagram"><ProcessDiagram /></div>
+	</section>
+
+	<section class="band" aria-labelledby="h-real">
+		<p class="kicker">02 / How we integrated</p>
+		<h2 id="h-real">Two real CLIs, real code</h2>
+		<p class="lede">Both integrations are <strong>open pull requests</strong>, not shipped releases. The excerpts below are copied from those branches.</p>
+		<Tabs>
+			<TabItem label="aos  (254 operations)">
+				<div class="int-meta">
+					<span class="status">open PR</span>
+					<a href="https://github.com/muthuishere/aos/pull/123">muthuishere/aos#123</a>
+					<span class="muted">branch <code>feat/aos-code-json</code></span>
+				</div>
+				<p>aos already had a batch table of every verb. <code>aos code</code> registers one operation per batch verb, and each handler calls the same <code>cli.Invoke</code> path, so the two can never disagree about what a command does. Results are JSON-first; a failing command throws.</p>
+				<Code code={aosGo} lang="go" title="register and mount" />
+				<Code code={aosHandler} lang="go" title="JSON-first handler" />
+				<Code code={aosProg} lang="js" title="agent program: machine snapshot" />
+				<p class="note">Measured: 220 ms wall, 260 ms CPU and 158 bytes back, vs 196 ms, 280 ms CPU and 8,612 bytes for four parallel processes. <a href={href('/examples/aos/')}>Full aos walkthrough</a></p>
+			</TabItem>
+			<TabItem label="ctx-optimize  (6 read-only verbs)">
+				<div class="int-meta">
+					<span class="status">open PR</span>
+					<a href="https://github.com/muthuishere/ctx-optimize/pull/20">muthuishere/ctx-optimize#20</a>
+					<span class="muted">branch <code>feat/code-mode</code></span>
+				</div>
+				<p>ctx-optimize wraps its existing read-only verbs with <code>adapters/cmdtree</code>. <code>WithJSONResult</code> appends <code>--json</code> and returns the parsed value; <code>WithFlagsLast</code> handles verbs that read positionals first. Nothing that writes the store is registered.</p>
+				<Code code={ctxGo} lang="go" title="internal/app/codemode.go" />
+				<Code code={ctxProg} lang="js" title="agent program: query, then cards in parallel" />
+				<Code code={ctxOut} lang="sh" title="structured output (real run on the ctx-optimize repo)" />
+				<p class="note"><a href={href('/examples/ctx-optimize/')}>Full ctx-optimize walkthrough</a></p>
+			</TabItem>
+		</Tabs>
+	</section>
+
+	<section class="band" aria-labelledby="h-qs">
+		<p class="kicker">03 / Quickstart</p>
+		<h2 id="h-qs">Add <code>code</code> to a Go CLI</h2>
+		<ol class="steps">
+			<li>
+				<h3>Register what you already have</h3>
+				<p>Write a handler that calls your existing function, or wrap an existing command body with <code>adapters/cmdtree</code>. Both use the standard library only.</p>
+				<Tabs>
+					<TabItem label="New handler"><Code code={qsRegister} lang="go" /></TabItem>
+					<TabItem label="Wrap a flag.FlagSet"><Code code={qsWrap} lang="go" /></TabItem>
+				</Tabs>
+			</li>
+			<li>
+				<h3>Mount the <code>code</code> subcommand</h3>
+				<Code code={qsMount} lang="go" />
+			</li>
+			<li>
+				<h3>Agents discover, check, then run</h3>
+				<Code code={qsAgent} lang="sh" />
+				<p>A typo is caught before anything runs:</p>
+				<Code code={qsCheck} lang="sh" />
+			</li>
+		</ol>
+		<p class="more"><a href={href('/getting-started/')}>Try the demo CLI in 30 seconds</a> <span aria-hidden="true">·</span> <a href={href('/integrate/')}>Integration guide</a></p>
+	</section>
+
+	<section class="band" aria-labelledby="h-who">
+		<p class="kicker">04 / Who it is for</p>
+		<h2 id="h-who">Built for two kinds of people</h2>
+		<div class="cards">
+			<a class="card" href={href('/integrate/')}>
+				<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6l5 6-5 6M12 18h8" /></svg>
+				<h3>CLI authors</h3>
+				<p>You maintain a Go CLI and agents keep calling it one command at a time. Register your existing commands, mount <code>code</code>, and every agent gets self-describing operations, a checker and one-process runs. About 1.7 MB added to the binary.</p>
+				<span class="go">Integrate your CLI →</span>
+			</a>
+			<a class="card" href={href('/agents/')}>
+				<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H6a2 2 0 00-2 2v4l-2 2 2 2v4a2 2 0 002 2h2M16 4h2a2 2 0 012 2v4l2 2-2 2v4a2 2 0 01-2 2h-2" /></svg>
+				<h3>Agent skill developers</h3>
+				<p>You write skills or prompts that drive CLIs. Any CLI with Code Mode answers <code>code capabilities --json</code>; your skill writes one program per task, checks it, runs it, and reads one JSON value back.</p>
+				<span class="go">Use from an agent or skill →</span>
+			</a>
+		</div>
+	</section>
+
+	<section class="band" aria-labelledby="h-num">
+		<p class="kicker">05 / Measurements</p>
+		<h2 id="h-num">What we measured, and how</h2>
+		<p class="lede">Same task both ways, medians, Apple Silicon, fresh process per run. "Separate processes" is how a Code Mode snippet calls a CLI today: one process per command. Model round trips are one either way; these numbers are about processes, CPU and bytes, not tokens.</p>
+		<div class="tables">
+			<div class="tbl">
+				<h3>ctx-optimize: query, 5 cards, change plan (7 calls)</h3>
+				<table>
+					<thead><tr><th scope="col"></th><th scope="col">wall</th><th scope="col">CPU</th><th scope="col">bytes back</th></tr></thead>
+					<tbody>
+						<tr><th scope="row">7 processes, sequential</th><td>68 ms</td><td>167 ms</td><td>28,273</td></tr>
+						<tr><th scope="row">7 processes, cards in parallel</th><td>47 ms</td><td>164 ms</td><td>28,273</td></tr>
+						<tr class="hl"><th scope="row">1 <code>code run</code></th><td>33 ms</td><td>137 ms</td><td>169</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="tbl">
+				<h3>aos: 24 read-only calls</h3>
+				<table>
+					<thead><tr><th scope="col"></th><th scope="col">wall</th><th scope="col">CPU</th></tr></thead>
+					<tbody>
+						<tr><th scope="row">24 processes, sequential</th><td>1,644 ms</td><td>1,228 ms</td></tr>
+						<tr><th scope="row">24 processes, parallel</th><td>217 ms</td><td>1,493 ms</td></tr>
+						<tr class="hl"><th scope="row">1 <code>code run</code></th><td>217 ms</td><td>1,012 ms</td></tr>
+					</tbody>
+				</table>
+				<p class="note">Against parallel spawning the wall time is equal. The difference is CPU (about a third less) and what comes back.</p>
+			</div>
+		</div>
+		<ul class="facts">
+			<li><strong>Interpreter speed.</strong> A 1M-iteration loop takes 55 ms in CodeMode and 25 ms in Node. Node's JIT wins tight loops; put heavy compute in a Go operation.</li>
+			<li><strong>Binary size.</strong> +1.7 MB to a stripped binary (2.5 MB to 4.2 MB). One dependency: <code>gopkg.in/yaml.v3</code>.</li>
+			<li><strong>Not claimed.</strong> Token savings with a real agent have not been measured yet.</li>
+		</ul>
+		<p class="more"><a href={href('/benchmarks/')}>Benchmarks and methodology</a></p>
+	</section>
+
+	<section class="band last" aria-labelledby="h-next">
+		<h2 id="h-next">Read next</h2>
+		<div class="next">
+			<a href={href('/how-it-works/')}><span>How it works</span><small>registry, engine, interpreter</small></a>
+			<a href={href('/language/')}><span>JS subset</span><small>what programs can and cannot do</small></a>
+			<a href={href('/security/')}><span>Security and policy</span><small>limits, Policy.Allow, not a sandbox</small></a>
+			<a href={href('/faq/')}><span>FAQ</span><small>vs Claude Code Code Mode, MCP, shell scripts</small></a>
+		</div>
+	</section>
+</div>
+
+<style>
+	.home { --gut: clamp(1rem, 4vw, 2.5rem); max-width: 72rem; margin: 0 auto; padding: 0 var(--gut) 4rem; color: var(--cc-text); }
+	.home :global(code) { font-family: var(--cc-mono); font-size: 0.88em; }
+	.home p :global(code), .home li :global(code), .home h2 :global(code), .home h3 :global(code), .col-h :global(code), .home th :global(code) {
+		background: var(--cc-bg-raised); border: 1px solid var(--cc-line); border-radius: 5px; padding: 0.05em 0.35em;
+	}
+	.home h2 :global(code) { font-size: 0.85em; }
+
+	.hero { padding: clamp(3rem, 9vw, 6.5rem) 0 clamp(2.5rem, 6vw, 4rem); max-width: 54rem; }
+	.eyebrow { display: inline-flex; align-items: center; gap: 0.5rem; font: 500 0.78rem var(--cc-mono); color: var(--cc-text-2); border: 1px solid var(--cc-line); border-radius: 999px; padding: 0.3rem 0.8rem; margin: 0 0 1.6rem; }
+	.eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cc-accent); }
+	.eyebrow .sep { color: var(--cc-text-3); }
+	.hero h1 { font-size: clamp(2.3rem, 6.2vw, 4.4rem); line-height: 1.04; letter-spacing: -0.035em; font-weight: 750; margin: 0 0 1.5rem; color: var(--sl-color-white); }
+	.accent { color: var(--cc-accent); }
+	.deck { font-size: clamp(1.08rem, 1.8vw, 1.28rem); line-height: 1.6; color: var(--cc-text-2); margin: 0 0 1rem; max-width: 46rem; }
+	.pitch { font-size: 1rem; line-height: 1.65; color: var(--cc-text-2); margin: 0 0 2rem; max-width: 46rem; border-left: 2px solid var(--cc-accent); padding-left: 1rem; }
+	.ctas { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.6rem; }
+	.btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.15rem; border-radius: 8px; font-weight: 600; font-size: 0.95rem; text-decoration: none; color: var(--cc-text); border: 1px solid var(--cc-line-strong); background: var(--cc-bg-raised); transition: border-color 0.15s, transform 0.15s; }
+	.btn:hover { border-color: var(--cc-text-3); }
+	.btn.primary { background: var(--cc-accent); color: var(--cc-accent-ink); border-color: var(--cc-accent); }
+	.btn.primary:hover { transform: translateY(-1px); }
+	.install { max-width: 34rem; }
+
+	.band { border-top: 1px solid var(--cc-line); padding: clamp(2.8rem, 6vw, 4.5rem) 0; }
+	.kicker { font: 500 0.76rem var(--cc-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--cc-accent); margin: 0 0 0.7rem; }
+	.band h2 { font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: -0.025em; line-height: 1.15; margin: 0 0 0.8rem; color: var(--sl-color-white); }
+	.band h3 { font-size: 1.05rem; letter-spacing: -0.01em; margin: 0 0 0.5rem; color: var(--sl-color-white); }
+	.lede { color: var(--cc-text-2); font-size: 1.05rem; line-height: 1.65; max-width: 46rem; margin: 0 0 2rem; }
+	.note { color: var(--cc-text-3); font-size: 0.88rem; line-height: 1.6; margin: 0.8rem 0 0; }
+	.muted { color: var(--cc-text-3); font-size: 0.86rem; }
+	.home a { color: var(--cc-accent); }
+
+	.split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+	.col { min-width: 0; display: flex; flex-direction: column; }
+	.col-h { font-size: 0.9rem; color: var(--cc-text-2); margin: 0 0 0.6rem; display: flex; gap: 0.5rem; align-items: center; height: 1.9rem; }
+	.col > :global(*) { margin-top: 0 !important; }
+	.col .note { margin-top: 0.8rem !important; }
+	.tag { font: 600 0.72rem var(--cc-mono); padding: 0.2rem 0.5rem; border-radius: 5px; border: 1px solid var(--cc-line-strong); color: var(--cc-text); }
+	.tag-accent { border-color: var(--cc-accent); color: var(--cc-accent); background: var(--cc-accent-soft); }
+	.diagram { margin-top: 2.5rem; border: 1px solid var(--cc-line); border-radius: 12px; padding: clamp(1rem, 3vw, 1.8rem); background: var(--cc-bg-sunk); }
+
+	.int-meta { display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center; margin: 0.4rem 0 1rem; font-size: 0.9rem; }
+	.status { font: 600 0.7rem var(--cc-mono); text-transform: uppercase; letter-spacing: 0.06em; padding: 0.2rem 0.5rem; border-radius: 4px; color: var(--cc-proc); border: 1px solid currentColor; }
+	.band :global(.expressive-code) { margin-top: 1rem; }
+	.band p { line-height: 1.65; }
+
+	.steps { list-style: none; padding: 0; margin: 1.5rem 0 0; counter-reset: s; display: grid; gap: 2.2rem; }
+	.steps > li { counter-increment: s; position: relative; padding-left: 3rem; min-width: 0; }
+	.steps > li::before { content: counter(s); position: absolute; left: 0; top: -0.1rem; width: 2rem; height: 2rem; border-radius: 50%; border: 1px solid var(--cc-line-strong); display: grid; place-items: center; font: 600 0.85rem var(--cc-mono); color: var(--cc-accent); }
+	.steps p { color: var(--cc-text-2); margin: 0.2rem 0 0.4rem; }
+	.more { margin-top: 2rem; font-weight: 600; font-size: 0.95rem; }
+
+	.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+	.card { display: flex; flex-direction: column; text-decoration: none; border: 1px solid var(--cc-line); border-radius: 12px; padding: 1.6rem; background: var(--cc-bg-raised); color: var(--cc-text) !important; transition: border-color 0.15s; }
+	.card:hover { border-color: var(--cc-accent); }
+	.card p { color: var(--cc-text-2); font-size: 0.95rem; margin: 0 0 1.2rem; flex: 1; }
+	.ic { width: 28px; height: 28px; fill: none; stroke: var(--cc-accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 1rem; }
+	.go { color: var(--cc-accent); font-weight: 600; font-size: 0.9rem; }
+
+	.tables { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.5rem; }
+	.tbl { min-width: 0; border: 1px solid var(--cc-line); border-radius: 12px; padding: 1.3rem; overflow-x: auto; }
+	.tbl h3 { font-size: 0.95rem; }
+	table { width: 100%; border-collapse: collapse; font-size: 0.9rem; font-variant-numeric: tabular-nums; margin-top: 0.6rem; }
+	th, td { padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--cc-line); text-align: right; white-space: nowrap; }
+	th[scope='row'], thead th:first-child { text-align: left; font-weight: 500; color: var(--cc-text-2); }
+	thead th { font: 500 0.75rem var(--cc-mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--cc-text-3); }
+	tr.hl th, tr.hl td { color: var(--sl-color-white); font-weight: 650; background: var(--cc-accent-soft); }
+	.facts { list-style: none; padding: 0; margin: 1.8rem 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+	.facts li { color: var(--cc-text-2); font-size: 0.92rem; line-height: 1.6; border-top: 2px solid var(--cc-line-strong); padding-top: 0.8rem; }
+	.facts strong { color: var(--sl-color-white); display: block; margin-bottom: 0.2rem; }
+
+	.next { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 1.2rem; }
+	.next a { text-decoration: none; border: 1px solid var(--cc-line); border-radius: 10px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.25rem; transition: border-color 0.15s; }
+	.next a:hover { border-color: var(--cc-accent); }
+	.next span { color: var(--sl-color-white); font-weight: 600; }
+	.next small { color: var(--cc-text-3); font-size: 0.82rem; }
+
+	@media (max-width: 52rem) {
+		.split, .cards, .tables, .facts { grid-template-columns: 1fr; }
+		.next { grid-template-columns: 1fr 1fr; }
+		.steps > li { padding-left: 2.6rem; }
+	}
+	@media (max-width: 30rem) { .next { grid-template-columns: 1fr; } }
+	@media (prefers-reduced-motion: reduce) { .btn, .card, .next a { transition: none; } .btn.primary:hover { transform: none; } }
+</style>

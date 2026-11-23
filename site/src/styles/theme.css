@@ -1,0 +1,116 @@
+/* CLI CodeMode theme: code-first dark, careful light. One accent (amber). */
+:root {
+	--cc-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+	--cc-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+	--sl-font: var(--cc-sans);
+	--sl-font-mono: var(--cc-mono);
+
+	/* dark (default) */
+	--cc-bg: #0b0e13;
+	--cc-bg-raised: #11151c;
+	--cc-bg-sunk: #080a0e;
+	--cc-line: #222a35;
+	--cc-line-strong: #2f3946;
+	--cc-text: #e6edf3;
+	--cc-text-2: #a4afbc;
+	--cc-text-3: #7d8896;
+	--cc-accent: #f0a43a;
+	--cc-accent-ink: #1a1206;
+	--cc-accent-soft: rgba(240, 164, 58, 0.12);
+	--cc-ok: #5fd39a;
+	--cc-proc: #6aa7ff;
+
+	--sl-color-accent-low: #2a1d08;
+	--sl-color-accent: #f0a43a;
+	--sl-color-accent-high: #ffd8a1;
+	--sl-color-white: #f4f7fa;
+	--sl-color-gray-1: #e6edf3;
+	--sl-color-gray-2: #c4cdd7;
+	--sl-color-gray-3: #a4afbc;
+	--sl-color-gray-4: #6b7685;
+	--sl-color-gray-5: #2f3946;
+	--sl-color-gray-6: #151a22;
+	--sl-color-black: #0b0e13;
+	--sl-color-bg-nav: #0b0e13;
+	--sl-color-bg-sidebar: #0b0e13;
+	--sl-color-hairline: #1c232d;
+	--sl-color-hairline-light: #222a35;
+	--sl-content-width: 46rem;
+}
+
+:root[data-theme='light'] {
+	--cc-bg: #ffffff;
+	--cc-bg-raised: #f7f8fa;
+	--cc-bg-sunk: #f2f4f7;
+	--cc-line: #e3e7ec;
+	--cc-line-strong: #cfd5dd;
+	--cc-text: #0f1419;
+	--cc-text-2: #48525e;
+	--cc-text-3: #5d6773;
+	--cc-accent: #a05a00;
+	--cc-accent-ink: #ffffff;
+	--cc-accent-soft: rgba(160, 90, 0, 0.08);
+	--cc-ok: #17804f;
+	--cc-proc: #1f5fd1;
+
+	--sl-color-accent-low: #fbead2;
+	--sl-color-accent: #a05a00;
+	--sl-color-accent-high: #5c3300;
+	--sl-color-white: #0f1419;
+	--sl-color-gray-1: #1b232c;
+	--sl-color-gray-2: #333d48;
+	--sl-color-gray-3: #48525e;
+	--sl-color-gray-4: #6b7580;
+	--sl-color-gray-5: #cfd5dd;
+	--sl-color-gray-6: #eef1f4;
+	--sl-color-gray-7: #f7f8fa;
+	--sl-color-black: #ffffff;
+	--sl-color-bg-nav: #ffffff;
+	--sl-color-bg-sidebar: #ffffff;
+	--sl-color-hairline: #e9edf1;
+	--sl-color-hairline-light: #eef1f4;
+}
+
+body { background: var(--cc-bg); }
+::selection { background: var(--cc-accent-soft); }
+
+/* header and sidebar: quiet, precise */
+.site-title { font-weight: 650; letter-spacing: -0.01em; font-size: 1.02rem; }
+.site-title img { height: 1.6rem; width: auto; }
+header.header { border-bottom: 1px solid var(--cc-line); }
+nav.sidebar .top-level > li > a, nav.sidebar a { font-size: 0.9rem; }
+nav.sidebar a[aria-current='page'] {
+	background: var(--cc-accent-soft);
+	color: var(--sl-color-white);
+	font-weight: 600;
+	box-shadow: inset 2px 0 0 var(--cc-accent);
+}
+
+/* content typography */
+.sl-markdown-content { line-height: 1.7; }
+.sl-markdown-content h2 { font-size: 1.45rem; letter-spacing: -0.015em; margin-top: 2.6rem; padding-top: 0.2rem; }
+.sl-markdown-content h3 { font-size: 1.12rem; letter-spacing: -0.01em; }
+h1#_top { letter-spacing: -0.025em; font-weight: 700; }
+.sl-markdown-content :not(pre) > code {
+	font-size: 0.86em;
+	background: var(--cc-bg-raised);
+	border: 1px solid var(--cc-line);
+	border-radius: 5px;
+	padding: 0.1em 0.35em;
+}
+.sl-markdown-content table { display: block; overflow-x: auto; font-size: 0.9rem; border-collapse: collapse; }
+.sl-markdown-content th { text-align: left; font-weight: 600; background: var(--cc-bg-raised); }
+.sl-markdown-content th, .sl-markdown-content td { border: 1px solid var(--cc-line); padding: 0.45rem 0.7rem; }
+.sl-markdown-content td code { white-space: nowrap; }
+
+:focus-visible { outline: 2px solid var(--cc-accent); outline-offset: 2px; border-radius: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* splash page: our own layout fills the column */
+[data-has-hero] .main-pane, .splash .content-panel { padding: 0; }
+.content-panel:has(+ .content-panel .home) { display: none; }
+.content-panel:has(.home) { padding-top: 0; border-top: 0; }
+.content-panel:has(.home) .sl-container { max-width: none; }
