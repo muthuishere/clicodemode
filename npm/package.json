@@ -1,21 +1,36 @@
 {
   "name": "clicodemode",
-  "version": "0.1.0",
+  "version": "0.6.0",
   "description": "Code Mode for JS and TS CLIs: register your commands as operations, agents run a small JavaScript-like program that calls them. Engine is Go compiled to WASM.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
     "./codemode.wasm": "./dist/codemode.wasm",
     "./package.json": "./package.json"
   },
-  "files": ["dist", "README.md", "examples"],
-  "engines": { "node": ">=20" },
+  "files": [
+    "dist/*.js",
+    "dist/*.d.ts",
+    "dist/codemode.wasm",
+    "README.md",
+    "examples"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "build:wasm": "bash ../scripts/build-wasm.sh",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "verify-pack": "node scripts/verify-pack.mjs"
   },
-  "devDependencies": { "typescript": "^5.6.0" },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  },
   "license": "MIT"
 }

@@ -12,8 +12,10 @@ export interface Bridge {
   docs(id: number | string): string;
   skill(id: number | string): string;
   version(): string;
-  run(id: number | string, src: string, file: string, inputJson: string): Promise<string>;
-  eval(id: number | string, expr: string, inputJson: string): Promise<string>;
+  run(id: number | string, src: string, file: string, inputJson: string, callId?: string, timeoutMs?: string): Promise<string>;
+  eval(id: number | string, expr: string, inputJson: string, callId?: string, timeoutMs?: string): Promise<string>;
+  /** Abort the running call named callId; true if one was running. */
+  cancel(callId: string): boolean;
 }
 
 let bridge: Promise<Bridge> | undefined;

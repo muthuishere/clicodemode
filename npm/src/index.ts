@@ -6,8 +6,32 @@ import type {
 export * from "./types.js";
 export { loadWasm, type Bridge } from "./wasm.js";
 
-export interface RunOptions { file?: string; input?: unknown }
-export interface EvalOptions { input?: unknown }
+/** Structural subset of the standard AbortSignal (no DOM or @types/node needed). */
+export interface AbortSignalLike {
+  readonly aborted: boolean;
+  addEventListener(type: "abort", fn: () => void, opts?: { once?: boolean }): void;
+  removeEventListener(type: "abort", fn: () => void): void;
+}
+
+/** Default wall-clock bound for one run/eval call, in milliseconds. */
+export const DEFAULT_TIMEOUT_MS = 30_000;
+
+export interface CallOptions {
+  /** Program input, visible to the program as `input`. */
+  input?: unknown;
+  /**
+   * Bound for this call in ms (default DEFAULT_TIMEOUT_MS = 30000; 0 = none
+   * beyond the engine's own limits.timeout_ms). On expiry the call resolves
+   * with ok:false and pending host handlers are abandoned. Caveat: WASM has
+   * no preemption, so the timeout cannot interrupt a CPU-bound loop that
+   * never awaits a host operation; that is bounded by limits.max_steps.
+   */
+  timeoutMs?: number;
+  /** Aborting resolves the call with ok:false and abandons pending host handlers. Like timeoutMs it takes effect when the program awaits a host operation, not inside a pure CPU loop. */
+  signal?: AbortSignalLike;
+}
+export interface RunOptions extends CallOptions { file?: string }
+export interface EvalOptions extends CallOptions {}
 
 export interface CodeMode {
   register(op: OperationSpec): void;
@@ -21,6 +45,8 @@ export interface CodeMode {
   run(src: string, opts?: RunOptions): Promise<Result>;
   eval(expr: string, opts?: EvalOptions): Promise<Result>;
 }
+
+let callSeq = 0;
 
 const NAME_RE = /^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)*$/;
 
@@ -85,6 +111,35 @@ export function createCodeMode(options: CodeModeOptions): CodeMode {
     return { b, id };
   }
 
+  // Runs one call under a callId so signal/timeout can cancel it in the engine.
+  async function call(
+    opts: CallOptions,
+    start: (b: Bridge, id: number | string, callId: string) => Promise<string>,
+  ): Promise<Result> {
+    const { signal } = opts;
+    const aborted = (): Result => ({ ok: false, value: null, error: "aborted", ms: 0 });
+    if (signal?.aborted) return aborted();
+    const { b, id } = await ready();
+    if (signal?.aborted) return aborted();
+    const callId = `c${++callSeq}`;
+    const t = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!(t >= 0)) throw new Error("clicodemode: timeoutMs must be >= 0");
+    const onAbort = () => { b.cancel(callId); };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    // The timer lives on the JS side: a Go-side timer would keep the Node
+    // process alive until it expires even after the call finished.
+    let timedOut = false;
+    const timer = t > 0 ? setTimeout(() => { timedOut = true; b.cancel(callId); }, t) : undefined;
+    try {
+      const r = parse<Result>(await start(b, id, callId));
+      if (timedOut && !r.ok) r.error = `timed out after ${t}ms (${r.error ?? "cancelled"})`;
+      return r;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    }
+  }
+
   return {
     register(op) {
       if (!NAME_RE.test(op.name)) throw new Error(`clicodemode: invalid operation name "${op.name}" (want dotted lower-case, e.g. health.check)`);
@@ -100,13 +155,13 @@ export function createCodeMode(options: CodeModeOptions): CodeMode {
     async skill() { const { b, id } = await ready(); return text(b.skill(id)); },
     async check(src, file = "<program>") { const { b, id } = await ready(); return withOk(parse<CheckResult>(b.check(id, src, file))); },
     async compile(src, file = "<program>") { const { b, id } = await ready(); return withOk(parse<CheckResult>(b.compile(id, src, file))); },
-    async run(src, opts = {}) {
-      const { b, id } = await ready();
-      return parse<Result>(await b.run(id, src, opts.file ?? "<program>", JSON.stringify(opts.input ?? null)));
+    run(src, opts = {}) {
+      return call(opts, (b, id, callId) =>
+        b.run(id, src, opts.file ?? "<program>", JSON.stringify(opts.input ?? null), callId));
     },
-    async eval(expr, opts = {}) {
-      const { b, id } = await ready();
-      return parse<Result>(await b.eval(id, expr, JSON.stringify(opts.input ?? null)));
+    eval(expr, opts = {}) {
+      return call(opts, (b, id, callId) =>
+        b.eval(id, expr, JSON.stringify(opts.input ?? null), callId));
     },
   };
 }
