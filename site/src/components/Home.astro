@@ -166,13 +166,13 @@ $ echo $?
 	<section class="band" aria-labelledby="h-real">
 		<p class="kicker">02 / How we integrated</p>
 		<h2 id="h-real">Two real CLIs, real code</h2>
-		<p class="lede">Both integrations are <strong>open pull requests</strong>, not shipped releases. The Go excerpts are copied from those branches; where code is left out, the excerpt says so.</p>
+		<p class="lede">aos ships it in v0.15.1; ctx-optimize is an <strong>open pull request</strong>. The Go excerpts are copied from that code; where code is left out, the excerpt says so.</p>
 		<Tabs>
 			<TabItem label="aos  (254 operations)">
 				<div class="int-meta">
-					<span class="status">open PR</span>
-					<a href="https://github.com/muthuishere/aos/pull/123">muthuishere/aos#123</a>
-					<span class="muted">branch <code>feat/aos-code-json</code></span>
+					<span class="status">shipped</span>
+					<a href="https://github.com/muthuishere/aos/releases/tag/v0.15.1">aos v0.15.1</a>
+					<span class="muted">merged in <a href="https://github.com/muthuishere/aos/pull/123">aos#123</a></span>
 				</div>
 				<p>aos already had a batch table of every verb. <code>aos code</code> registers one operation per batch verb, and each handler calls the same <code>cli.Invoke</code> path, so the two can never disagree about what a command does. Results are JSON-first; a failing command throws.</p>
 				<Code code={aosGo} lang="go" title="mount and register" />
