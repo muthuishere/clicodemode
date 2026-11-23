@@ -44,7 +44,7 @@ and returns only the result.
 |---|---|
 | OP-1 | `call(name, args)` and `ops.<path>(args)` are equivalent and return a Promise. |
 | OP-2 | Arguments MUST be an object (or omitted) and are validated against `input_schema` (type, properties, required, enum, items, additionalProperties:false) before the handler runs. |
-| OP-3 | A literal operation name that is not registered is a `check` error (with did-you-mean); a computed one fails at run time. Either way the handler never runs. |
+| OP-3 | A literal operation name that is not registered is a `check` error (with did-you-mean); a computed one fails at run time. Either way the handler never runs. Literal parts of the arguments are validated against `input_schema` by `check` too; `ops.a.b-c(...)` (which parses as a subtraction) is a `check` error pointing to `ops.a["b-c"](...)`. |
 | OP-4 | `Policy.Allow` is consulted before every call; a denial rejects the call. |
 | OP-5 | Handler errors reject the promise and are catchable; a handler panic MUST become a rejection, not crash the host. |
 | OP-6 | Operations in flight are bounded by `Limits.MaxConcurrency` (default 32). |

@@ -163,3 +163,16 @@ per-CLI skill (`code skill`); optional MCP adapter (never required).
 `code run-step <module.js>#<export> [--input JSON]` calls one exported step
 with `{input, steps: {}}` through the normal loader rules; it is the entry
 point declarative plans exported to WFNexus invoke.
+
+## Host guard rails for wrapped commands
+
+`adapters/cmdtree` calls your command function directly, so checks your CLI's
+own front door does (rejecting unknown flags, refusing a fuzzy match) are
+skipped, and anything the command writes to stderr is invisible to the
+program. Two options close that gap:
+
+- `cmdtree.WithValidate(func(args []string) error)` runs on the final argv
+  before the command; an error rejects the call and nothing runs.
+- `cmdtree.WithCheckResult(func(args []string, stdout []byte) error)` runs
+  after a successful run; an error rejects the call. Use it for soft failures
+  the command only reports on stderr.

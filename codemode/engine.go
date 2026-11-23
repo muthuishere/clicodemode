@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -199,6 +200,7 @@ func (e *Engine) checkOps(prog *js.Program, file string, used map[string]bool) [
 		if id, ok := c.Callee.(*js.Ident); ok && id.Name == "call" && len(c.Args) > 0 {
 			if s, ok := c.Args[0].(*js.StringLit); ok {
 				check(s.V, s.P())
+				e.checkArgs(s.V, &js.Call{Callee: c.Callee, Args: c.Args[1:]}, file, &diags)
 			}
 			return
 		}
@@ -216,9 +218,140 @@ func (e *Engine) checkOps(prog *js.Program, file string, used map[string]bool) [
 		}
 		if path, ok := opsPath(c.Callee); ok {
 			check(path, c.Callee.P())
+			e.checkArgs(path, c, file, &diags)
 		}
 	})
+	// ops.ctx.change-plan(...) parses as ops.ctx.change - plan(...): the call
+	// never happens and check would see no operation at all.
+	js.Walk(prog, func(n js.Node) {
+		b, ok := n.(*js.Binary)
+		if !ok || b.Op != "-" {
+			return
+		}
+		l := b.L
+		if a, isAwait := l.(*js.Await); isAwait {
+			l = a.X // await ops.a.b-c(...) parses as (await ops.a.b) - c(...)
+		}
+		path, ok := opsPath(l)
+		if !ok {
+			return
+		}
+		rest := ""
+		switch r := b.R.(type) {
+		case *js.Ident:
+			rest = r.Name
+		case *js.Call:
+			if id, ok := r.Callee.(*js.Ident); ok {
+				rest = id.Name
+			}
+		}
+		if rest == "" {
+			return
+		}
+		name := path + "-" + rest
+		i := strings.LastIndex(name, ".")
+		quoted := name[:max(i, 0)]
+		d := Diagnostic{Severity: "error", File: file, Line: l.P().Line, Col: l.P().Col,
+			Message: fmt.Sprintf("ops.%s parses as a subtraction (ops.%s - %s), not an operation call", name, path, rest)}
+		if i >= 0 {
+			d.Hint = fmt.Sprintf("write ops.%s[%q](...) or call(%q, ...)", quoted, name[i+1:], name)
+		} else {
+			d.Hint = fmt.Sprintf("write ops[%q](...) or call(%q, ...)", name, name)
+		}
+		if _, ok := e.Registry.Lookup(name); !ok {
+			d.Hint += "; no operation named " + strconv.Quote(name) + " is registered either"
+		}
+		diags = append(diags, d)
+	})
 	return diags
+}
+
+// checkArgs validates a literal argument of a call to a registered operation
+// against its input schema, so check catches what run would reject. Parts
+// that are not literals (variables, calls, spreads) are skipped.
+func (e *Engine) checkArgs(name string, c *js.Call, file string, diags *[]Diagnostic) {
+	op, ok := e.Registry.Lookup(name)
+	if !ok || len(c.Args) == 0 {
+		return
+	}
+	arg := c.Args[0]
+	v := literalValue(arg)
+	if _, unknown := v.(unknownArg); unknown {
+		return
+	}
+	at := arg.P()
+	if _, isObj := v.(map[string]any); !isObj {
+		if v == nil {
+			return // ops.x(null) / undefined: treated as no arguments
+		}
+		*diags = append(*diags, Diagnostic{Severity: "error", File: file, Line: at.Line, Col: at.Col,
+			Message: fmt.Sprintf("%s: arguments must be an object, got %s", name, jsonType(v)), Hint: "pass {key: value}"})
+		return
+	}
+	if len(op.InputSchema) == 0 {
+		return
+	}
+	var s map[string]any
+	if json.Unmarshal(op.InputSchema, &s) != nil {
+		return
+	}
+	var errs []string
+	validateValue(s, v, "", &errs)
+	for _, msg := range errs {
+		*diags = append(*diags, Diagnostic{Severity: "error", File: file, Line: at.Line, Col: at.Col,
+			Message: fmt.Sprintf("%s: %s", name, msg), Hint: fmt.Sprintf("see `code describe %s`", name)})
+	}
+}
+
+// literalValue returns the JSON value of a literal expression, with
+// unknownArg for anything only known at run time.
+func literalValue(n js.Node) any {
+	switch x := n.(type) {
+	case *js.StringLit:
+		return x.V
+	case *js.NumberLit:
+		return x.V
+	case *js.BoolLit:
+		return x.V
+	case *js.NullLit, *js.UndefLit:
+		return nil
+	case *js.TemplateLit:
+		if len(x.Exprs) == 0 {
+			return strings.Join(x.Quasis, "")
+		}
+		return "" // still a string
+	case *js.Unary:
+		if f, ok := literalValue(x.X).(float64); ok && x.Op == "-" {
+			return -f
+		}
+	case *js.ArrayLit:
+		out := make([]any, 0, len(x.Elems))
+		for _, el := range x.Elems {
+			if _, sp := el.(*js.Spread); sp {
+				return unknownArg{}
+			}
+			out = append(out, literalValue(el))
+		}
+		return out
+	case *js.ObjectLit:
+		out := make(map[string]any, len(x.Props))
+		for _, p := range x.Props {
+			if p.Spread || p.Computed != nil {
+				return unknownArg{}
+			}
+			if p.Value == nil {
+				out[p.Key] = unknownArg{} // shorthand {x}
+				continue
+			}
+			v := literalValue(p.Value)
+			if _, isUndef := p.Value.(*js.UndefLit); isUndef {
+				continue // {k: undefined} is dropped, as at run time
+			}
+			out[p.Key] = v
+		}
+		return out
+	}
+	return unknownArg{}
 }
 
 // opsPath returns "a.b" for the callee ops.a.b.

@@ -150,12 +150,12 @@ func TestArgumentValidationAndErrors(t *testing.T) {
 	reg, _ := testRegistry(t)
 	e := NewEngine(reg)
 	cases := map[string]string{
-		`await call("math.add", {a: 1})`:              "math.add: invalid arguments: b is required",
-		`await call("math.add", {a: "1", b: 2})`:      "a must be number, got string",
-		`await call("health.check", {verbos: true})`:  "verbos is not an allowed property",
-		`await call("math.add", 5)`:                   "arguments must be an object",
-		`await call("fail.always", {})`:               "fail.always: disk on fire",
-		`const n = "health." + "nope"; await call(n)`: `unknown operation "health.nope"`,
+		`const x = {a: 1}; await call("math.add", x)`:             "math.add: invalid arguments: b is required",
+		`const x = {a: "1", b: 2}; await call("math.add", x)`:     "a must be number, got string",
+		`const x = {verbos: true}; await call("health.check", x)`: "verbos is not an allowed property",
+		`const x = 5; await call("math.add", x)`:                  "arguments must be an object",
+		`await call("fail.always", {})`:                           "fail.always: disk on fire",
+		`const n = "health." + "nope"; await call(n)`:             `unknown operation "health.nope"`,
 	}
 	for src, want := range cases {
 		r := e.Run(context.Background(), src, "p.js")
@@ -163,6 +163,8 @@ func TestArgumentValidationAndErrors(t *testing.T) {
 			t.Errorf("%s\n got  %q\n want %q", src, r.Error, want)
 		}
 	}
+	// literal arguments are already rejected by check (#6), so the cases
+	// above go through variables to exercise run-time validation.
 	// handler errors are catchable in the program
 	r := e.Run(context.Background(), `let m; try { await call("fail.always") } catch (e) { m = e.message } m`, "p.js")
 	if !r.OK || r.Value != "fail.always: disk on fire" {

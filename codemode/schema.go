@@ -24,7 +24,14 @@ func validate(schema json.RawMessage, args map[string]any) []string {
 	return errs
 }
 
+// unknownArg stands for a value check cannot know statically (a variable,
+// a call, ...). validateValue accepts it for any schema.
+type unknownArg struct{}
+
 func validateValue(s map[string]any, v any, path string, errs *[]string) {
+	if _, ok := v.(unknownArg); ok {
+		return
+	}
 	at := path
 	if at == "" {
 		at = "args"
