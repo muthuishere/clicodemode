@@ -112,5 +112,5 @@ Against parallel spawning the wall time is even (the snapshot is slightly slower
 ## Sources
 
 - Release: [aos v0.15.1](https://github.com/muthuishere/aos/releases/tag/v0.15.1)
-- Registration: `internal/groups/code.go` on `feat/aos-code-json`
+- Registration: [`internal/groups/code.go`](https://github.com/muthuishere/aos/blob/main/internal/groups/code.go)
 - Agent skill: `internal/skill/assets/aos/references/code.md` on the same branch

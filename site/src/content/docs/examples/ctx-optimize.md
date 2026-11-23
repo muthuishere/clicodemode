@@ -1,12 +1,12 @@
 ---
 title: "ctx-optimize: six read-only verbs with cmdtree"
-description: "How ctx-optimize added `ctx-optimize code` by wrapping existing verbs with cmdtree.WithJSONResult and WithFlagsLast. Open PR."
+description: "How ctx-optimize added `ctx-optimize code` (v0.16.0) by wrapping its read-only verbs with cmdtree: WithJSONResult, WithFlagsLast, WithValidate and WithCheckResult."
 sidebar:
   label: ctx-optimize
 ---
 
 :::caution[Open PR, not released]
-This integration is [muthuishere/ctx-optimize#20](https://github.com/muthuishere/ctx-optimize/pull/20) on branch `feat/code-mode`, pinned to clicodemode v0.5.2. The code below is copied from that branch; elisions are marked.
+This integration shipped in [ctx-optimize v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0) (`npm i -g @muthuishere/ctx-optimize`), on clicodemode v0.6.1. The code below is copied from it; elisions are marked.
 :::
 
 ctx-optimize answers code questions from a prebuilt knowledge graph: `query`, `card`, `change-plan`, `affected`, `path`, `hubs`. Agents typically chain them: query, then a card on each top hit, then a change plan.
@@ -32,6 +32,8 @@ func codeRegistry() *codemode.Registry {
 		reg.MustRegister(cmdtree.FromRunner(name, desc, run,
 			cmdtree.WithJSONResult("--json"),
 			cmdtree.WithFlagsLast(), // these verbs parse positionals first
+			cmdtree.WithValidate(validateFlags(name)),
+			cmdtree.WithCheckResult(rejectFuzzy()),
 			cmdtree.WithSideEffects(codemode.SideEffectNone)))
 	}
 	ro("ctx.query", "Find symbols/docs by 2-4 terms. args: [\"<terms>\", \"--budget\", \"N\"].",
@@ -50,6 +52,7 @@ Dispatch is one line in `internal/app/app.go`: `case "code":`.
 Two details worth copying:
 
 - **`WithFlagsLast`** exists because of this integration: these verbs read positionals before flags (`query "terms" --json`), unlike stdlib `flag.Parse`. It was added to the library in v0.5.2.
+- **`WithValidate` / `WithCheckResult`** came from this integration too (clicodemode v0.6.1): the wrapped verbs skip the CLI's own front door, so `validateFlags` rejects unknown flags before the run and `rejectFuzzy` rejects a fuzzy symbol match that the CLI only reported on stderr.
 - **`change_plan`, not `change-plan`**: `ops.ctx.change-plan` would parse as subtraction.
 
 ## Agent program
@@ -91,6 +94,6 @@ Query, then `card` on the top 5 hits, then `change_plan` (7 calls). Medians, App
 
 ## Sources
 
-- PR: [muthuishere/ctx-optimize#20](https://github.com/muthuishere/ctx-optimize/pull/20)
-- Registration: `internal/app/codemode.go` on `feat/code-mode`
+- Release: [ctx-optimize v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0)
+- Registration: [`internal/app/codemode.go`](https://github.com/muthuishere/ctx-optimize/blob/main/internal/app/codemode.go)
 - Agent skill: `internal/skills/bundled/ctx-optimize/references/code-mode.md` on the same branch

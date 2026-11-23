@@ -67,6 +67,8 @@ func codeRegistry() *codemode.Registry {
 		reg.MustRegister(cmdtree.FromRunner(name, desc, run,
 			cmdtree.WithJSONResult("--json"),
 			cmdtree.WithFlagsLast(), // these verbs parse positionals first
+			cmdtree.WithValidate(validateFlags(name)),
+			cmdtree.WithCheckResult(rejectFuzzy()),
 			cmdtree.WithSideEffects(codemode.SideEffectNone)))
 	}
 	ro("ctx.query", "Find symbols/docs by 2-4 terms. args: [\\"<terms>\\", \\"--budget\\", \\"N\\"].",
@@ -186,7 +188,7 @@ $ echo $?
 	<section class="band" aria-labelledby="h-real">
 		<p class="kicker">02 / How we integrated</p>
 		<h2 id="h-real">Two real CLIs, real code</h2>
-		<p class="lede">aos ships it in v0.15.1; ctx-optimize is an <strong>open pull request</strong>. The Go excerpts are copied from that code; where code is left out, the excerpt says so.</p>
+		<p class="lede">aos ships it in v0.15.1 and ctx-optimize in v0.16.0. The Go excerpts are copied from that code; where code is left out, the excerpt says so.</p>
 		<Tabs>
 			<TabItem label="aos  (254 operations)">
 				<div class="int-meta">
@@ -201,11 +203,11 @@ $ echo $?
 			</TabItem>
 			<TabItem label="ctx-optimize  (6 read-only verbs)">
 				<div class="int-meta">
-					<span class="status">open PR</span>
-					<a href="https://github.com/muthuishere/ctx-optimize/pull/20">muthuishere/ctx-optimize#20</a>
-					<span class="muted">branch <code>feat/code-mode</code></span>
+					<span class="status">shipped</span>
+					<a href="https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0">ctx-optimize v0.16.0</a>
+					<span class="muted">npm <code>@muthuishere/ctx-optimize</code></span>
 				</div>
-				<p>ctx-optimize wraps its existing read-only verbs with <code>adapters/cmdtree</code>. <code>WithJSONResult</code> appends <code>--json</code> and returns the parsed value; <code>WithFlagsLast</code> handles verbs that read positionals first. Nothing that writes the store is registered.</p>
+				<p>ctx-optimize wraps its existing read-only verbs with <code>adapters/cmdtree</code>. <code>WithJSONResult</code> appends <code>--json</code> and returns the parsed value; <code>WithFlagsLast</code> handles verbs that read positionals first; <code>WithValidate</code> and <code>WithCheckResult</code> restate the front-door checks (unknown flags, fuzzy matches). Nothing that writes the store is registered.</p>
 				<Code code={ctxGo} lang="go" title="internal/app/codemode.go" />
 				<Code code={ctxProg} lang="js" title="agent program: query, then cards in parallel" />
 				<Code code={ctxOut} lang="sh" title="structured output (real run on the ctx-optimize repo)" />

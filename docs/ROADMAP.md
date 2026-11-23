@@ -33,7 +33,7 @@ Each step ships on its own, with tests.
    `Engine.Cache` / `CODEMODE_CACHE_DIR`.
 8. **Optional MCP adapter (done)**; generated per-CLI skill (done: `code skill`,
    grouped for large CLIs).
-9. **ctx-optimize (done, open PR ctx-optimize#20)**: `ctx-optimize code` over its read-only
+9. **ctx-optimize (done, shipped in ctx-optimize v0.16.0)**: `ctx-optimize code` over its read-only
    verbs with `cmdtree.WithJSONResult` and `WithFlagsLast`.
 
 Next candidates: a benchmark measuring model turns and tokens with a real agent,
