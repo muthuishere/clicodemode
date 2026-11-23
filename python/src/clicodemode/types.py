@@ -28,7 +28,7 @@ class Limits:
 
 @dataclass(frozen=True)
 class Operation:
-    """One callable unit. Names are dotted lower-case, e.g. ``window.focus``."""
+    """One callable unit. Names are dotted segments, e.g. ``window.focus`` (case-sensitive)."""
 
     name: str
     description: str = ""

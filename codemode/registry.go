@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"sync"
+	"sync/atomic"
 )
 
 // Handler runs one operation. args is the decoded JSON-like object passed by
@@ -34,7 +35,7 @@ type Example struct {
 	Result      any            `json:"result,omitempty"`
 }
 
-// Operation is one callable unit. Name uses dotted lower-case segments,
+// Operation is one callable unit. Name uses dotted case-sensitive segments,
 // e.g. "health.check" or "window.focus".
 type Operation struct {
 	Name          string          `json:"name"`
@@ -48,12 +49,13 @@ type Operation struct {
 	Handler       Handler         `json:"-"`
 }
 
-var opNameRe = regexp.MustCompile(`^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)*$`)
+var opNameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)*$`)
 
 // Registry holds operations. It is safe for concurrent use.
 type Registry struct {
 	mu  sync.RWMutex
 	ops map[string]*Operation
+	rev atomic.Uint64 // bumped on every Register/Unregister
 	// Version is the host CLI version; it feeds the capability fingerprint.
 	Version string
 }
@@ -67,7 +69,7 @@ func NewRegistry(version string) *Registry {
 // handler and schemas that are not valid JSON.
 func (r *Registry) Register(op Operation) error {
 	if !opNameRe.MatchString(op.Name) {
-		return fmt.Errorf("codemode: invalid operation name %q (want dotted lower-case, e.g. health.check)", op.Name)
+		return fmt.Errorf("codemode: invalid operation name %q (want dotted segments of letters, digits, _ and -, each starting with a letter, e.g. health.check)", op.Name)
 	}
 	if op.Handler == nil {
 		return fmt.Errorf("codemode: operation %q has no handler", op.Name)
@@ -87,8 +89,26 @@ func (r *Registry) Register(op Operation) error {
 	}
 	cp := op
 	r.ops[op.Name] = &cp
+	r.rev.Add(1)
 	return nil
 }
+
+// Unregister removes an operation (for example when the server behind it
+// disconnects). It reports whether the operation existed. Programs already
+// running keep any reference they hold; new calls fail as unknown.
+func (r *Registry) Unregister(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.ops[name]; !ok {
+		return false
+	}
+	delete(r.ops, name)
+	r.rev.Add(1)
+	return true
+}
+
+// Revision changes whenever an operation is registered or unregistered.
+func (r *Registry) Revision() uint64 { return r.rev.Load() }
 
 // MustRegister is Register that panics; for static setup code.
 func (r *Registry) MustRegister(op Operation) {
@@ -139,7 +159,7 @@ const SpecVersion = "codemode/v0"
 
 // LibraryVersion is this library's release, printed by `code version` so a
 // runner can tell which build is on its PATH.
-const LibraryVersion = "0.7.0"
+const LibraryVersion = "0.7.1"
 
 // Capabilities returns the full capability document with a fingerprint that
 // changes whenever any operation's public contract changes.

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "clicodemode"
-version = "0.7.0"  # tracks the Go LibraryVersion
+version = "0.7.1"  # tracks the Go LibraryVersion
 description = "Code Mode for Python CLIs: run agent-written JavaScript-like programs against your existing handlers, on the Go engine compiled to WebAssembly."
 readme = "README.md"
 license = "MIT"

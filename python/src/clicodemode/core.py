@@ -37,13 +37,14 @@ class _Aborted(Exception):
 
 
 def valid_name(n: str) -> bool:
-    """Dotted lower-case segments: ``health.check``, ``db.list-tables``."""
+    """Dotted segments of ASCII letters, digits, _ and -, each starting with a
+    letter: ``health.check``, ``db.list-tables``, ``gh.listPRs`` (case-sensitive)."""
     if not n:
         return False
     for seg in n.split("."):
-        if not seg or not ("a" <= seg[0] <= "z"):
+        if not seg or not (seg[0].isascii() and seg[0].isalpha()):
             return False
-        if not all(("a" <= c <= "z") or ("0" <= c <= "9") or c in "_-" for c in seg):
+        if not all((c.isascii() and c.isalnum()) or c in "_-" for c in seg):
             return False
     return True
 
@@ -89,7 +90,7 @@ class CodeMode:
         with self._lock:
             if not valid_name(op.name):
                 raise UsageError(
-                    f"invalid operation name {op.name!r} (want dotted lower-case, e.g. health.check)"
+                    f"invalid operation name {op.name!r} (want dotted segments of letters, digits, _ and -, e.g. health.check)"
                 )
             if op.name in self._ops:
                 raise UsageError(f"operation {op.name!r} already registered")

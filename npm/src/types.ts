@@ -10,7 +10,7 @@ export type Handler = (args: Record<string, any>) => unknown | Promise<unknown>;
 
 /** What you pass to register(). Mirrors Go codemode.Operation. */
 export interface OperationSpec {
-  name: string; // dotted lower-case, e.g. "health.check"
+  name: string; // dotted segments, case-sensitive, e.g. "health.check"
   description: string;
   inputSchema?: unknown;
   outputSchema?: unknown;

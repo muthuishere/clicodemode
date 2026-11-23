@@ -261,7 +261,7 @@ impl CodeMode {
     {
         if !valid_name(&op.name) {
             return Err(Error::Usage(format!(
-                "invalid operation name {:?} (want dotted lower-case, e.g. health.check)",
+                "invalid operation name {:?} (want dotted segments of letters, digits, _ and -, e.g. health.check)",
                 op.name
             )));
         }
@@ -392,10 +392,8 @@ fn valid_name(n: &str) -> bool {
     !n.is_empty()
         && n.split('.').all(|seg| {
             let mut c = seg.chars();
-            matches!(c.next(), Some('a'..='z'))
-                && c.all(|ch| {
-                    ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-'
-                })
+            matches!(c.next(), Some(ch) if ch.is_ascii_alphabetic())
+                && c.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
         })
 }
 

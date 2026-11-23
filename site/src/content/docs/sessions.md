@@ -22,7 +22,19 @@ r := s.Run(ctx, `repos.filter(r => r.dirty).map(r => r.name)`, codemode.RunOptio
 
 ## Per-run limits and cancel
 
-Each run gets its own context and limits. `RunOptions.Timeout` (or `SessionConfig.Timeout`, or the engine's `Policy.Limits.Timeout`) bounds that run. The caller's `ctx` cancels the run while `Run` has not returned; after that, `Cancel(handle)`. A stopped run never stops the session.
+Each run gets its own context and limits. `RunOptions.Timeout` (or `SessionConfig.Timeout`, or the engine's `Policy.Limits.Timeout`) bounds that run. The `ctx` given to `Run` is the parent of the run's context: operation handlers see its values, and cancelling it stops the run, even after `Run` returned with the run detached. Pass `context.WithoutCancel(ctx)` to let a detached run outlive the caller, and use `Cancel(handle)` to stop one by handle. A stopped run never stops the session.
+
+### Waiting on a human
+
+The timeout and the detach deadline count active time. A handler that waits for an approval pauses the clock:
+
+```go
+Handler: func(ctx context.Context, args map[string]any) (any, error) {
+    resume := codemode.PauseClock(ctx)
+    defer resume()
+    return askHuman(ctx, args) // honour ctx: the run can still be cancelled
+},
+```
 
 ## Detach and poll
 
@@ -37,7 +49,11 @@ for {
 }
 ```
 
-`print` and `console.*` are captured as ordered `output` events and are never written to the host process. An unhandled rejection after `Run` returned arrives as an `error` event.
+`print` and `console.*` are captured as ordered `output` events and are never written to the host process. An unhandled rejection after `Run` returned arrives as an `error` event. `PollWait(ctx, handle)` blocks until there is something to return.
+
+## Host globals and changing operations
+
+`s.Define("gh", value)` adds a global for later runs, for example a namespace of wrappers named the way your tools are. Operations registered or removed (`Registry.Unregister`) between runs show up on `ops` in the next run. For names a host maps itself, `Program.Calls()` lists the static call sites with their literal arguments, and `Engine.ValidateArgs(name, args)` checks them against an operation's schema the way `check` does for `ops.*`.
 
 ## Introspection
 
