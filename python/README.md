@@ -11,19 +11,16 @@ the language and nothing is reimplemented. The host (your Python code) owns
 authorization and path/exec security. Version 0.6.2 matches the Go library
 version; `cm.engine_version()` reports the engine that is embedded.
 
-## Install (no package registry needed; not on PyPI)
-
-**a) From a GitHub release asset** (the URL is valid once the v0.6.2 release exists):
+## Install
 
 ```bash
-python3 -m venv .venv && . .venv/bin/activate
-pip install https://github.com/muthuishere/clicodemode/releases/download/v0.6.2/clicodemode-0.6.2-py3-none-any.whl
+pip install clicodemode
 ```
 
 The wheel is pure Python plus the embedded engine (`_codemode.wasm`); the only
 dependency, `wasmtime`, is installed from its own wheels. Needs Python >= 3.9.
 
-**b) From source** (needs Go and Python >= 3.9; Python 3.10+ for the check script):
+**From source** (needs Go and Python >= 3.9; Python 3.10+ for the check script):
 
 ```bash
 git clone https://github.com/muthuishere/clicodemode && cd clicodemode

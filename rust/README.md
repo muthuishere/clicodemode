@@ -15,7 +15,17 @@ it may touch, which processes it may start).
 
 ## Install and quickstart (fresh machine)
 
-### A. Git dependency (needs Go 1.26+ installed)
+```sh
+cargo new hello && cd hello
+cargo add clicodemode serde_json
+# paste the main.rs below, then:
+cargo run
+```
+
+The crate on crates.io ships the engine (`assets/codemode.wasm`), so no Go is
+needed.
+
+### Git dependency (needs Go 1.26+ installed)
 
 ```sh
 cargo new hello && cd hello
@@ -30,7 +40,7 @@ The first build compiles the Go engine to `codemode.wasm` with
 into cargo's `OUT_DIR`. Nothing is written to the source tree. The crate lives
 in the `rust/` subdirectory of the repository; cargo finds it by name.
 
-### B. Release asset (no Go needed)
+### Release asset (no Go needed)
 
 Download `codemode.wasm` from the
 [GitHub release](https://github.com/muthuishere/clicodemode/releases) and point the build at it:

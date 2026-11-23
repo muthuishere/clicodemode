@@ -1,151 +1,187 @@
-# clicodemode (experimental)
+# clicodemode
 
-Code Mode for JavaScript and TypeScript CLIs. Register the commands your CLI
-already has as operations; an agent then writes one small JavaScript-like
-program that calls and composes them, instead of many separate tool calls.
+**Your agent has Code Mode. Does your CLI?**
 
-This package is a **thin wrapper around the Go engine compiled to WebAssembly**.
-It is not a native TypeScript interpreter. The Go engine owns parsing,
-language semantics and validation (diagnostics with file:line:col); this
-package only loads it, passes your handlers in and returns its results.
-Status: **experimental**, version 0.6.2. The Go project is the reference.
-
-## Install (no npm registry needed)
-
-The package is not published to the npm registry. Pick one:
-
-**a) From a GitHub release asset** (the URL is valid once the v0.6.2 release
-exists; the release workflow attaches the tarball produced by `npm pack`
-after the WASM is built):
+Give your Node CLI a `code` command. An agent sends it one small JavaScript
+program; the program calls your CLI's own commands inside one process and
+returns one JSON value. No extra Node process per call, no `child_process`,
+no raw output flooding the model.
 
 ```sh
-npm install https://github.com/muthuishere/clicodemode/releases/download/v0.6.2/clicodemode-0.6.2.tgz
+npm install clicodemode
 ```
 
-**b) From source** (needs Go and Node >= 20):
+Docs: https://muthuishere.github.io/clicodemode/
 
-```sh
-git clone https://github.com/muthuishere/clicodemode && cd clicodemode
-bash scripts/build-wasm.sh
-cd npm && npm ci && npm run build
-npm pack            # -> clicodemode-0.6.2.tgz, install it anywhere with npm install <path>
-```
+## How it works
 
-`npm run verify-pack` packs the tarball, installs it into a fresh directory
-and runs the two quickstarts below (JS executed, TS type-checked and executed).
+1. You **register** the functions behind your commands as operations.
+2. An agent (or you) sends a program:
 
-## Quickstart (TypeScript)
+   ```js
+   const [status, issues] = await Promise.all([
+     ops.repo.status({ path: input.path }),
+     ops.issues.list({ state: "open" }),
+   ]);
+   ({ branch: status.branch, open: issues.length })
+   ```
 
-<!-- quickstart-ts -->
-```ts
-import { createCodeMode } from "clicodemode";
+3. clicodemode checks it (unknown operations and bad arguments are reported
+   with `file:line:col` and nothing runs), runs it against your handlers, and
+   returns `{ ok, value }`.
 
-const cm = createCodeMode({ version: "1.0.0" });
-cm.register({
-  name: "health.check",
-  description: "Report service health",
-  sideEffects: "none",
-  idempotent: true,
-  inputSchema: { type: "object", properties: { verbose: { type: "boolean" } } },
-  handler: async ({ verbose }) => ({ ok: true, verbose: !!verbose }),
-});
+## Quickstart
 
-const caps = await cm.capabilities();            // cache by caps.fingerprint
-const bad = await cm.check("class A {}");        // diagnostics carry file:line:col
-console.log("fingerprint:", caps.fingerprint.length > 0, "check ok:", bad.ok);
-
-const r = await cm.run(
-  "const h = await ops.health.check({verbose: input.v}); h.ok",
-  { input: { v: true }, timeoutMs: 5000 },
-);
-console.log("run:", r.ok, r.value);
-```
-
-## Quickstart (JavaScript, ESM)
+Save as `mycli.mjs`. `node mycli.mjs` runs a demo program; `echo '<program>' |
+node mycli.mjs code run -` runs whatever an agent sends.
 
 <!-- quickstart-js -->
 ```js
 import { createCodeMode } from "clicodemode";
 
-const cm = createCodeMode({ version: "1.0.0" });
+// The functions your CLI already has.
+async function repoStatus({ path }) { return { path, branch: "main", dirty: false }; }
+async function listIssues({ state }) { return [{ id: 1, state }, { id: 2, state }]; }
+
+const cm = createCodeMode({ version: "mycli 1.0.0" });
 cm.register({
-  name: "health.check",
-  description: "Report service health",
+  name: "repo.status",
+  description: "Show repo status.",
   sideEffects: "none",
-  idempotent: true,
-  inputSchema: { type: "object", properties: { verbose: { type: "boolean" } } },
-  handler: async ({ verbose }) => ({ ok: true, verbose: !!verbose }),
+  inputSchema: { type: "object", required: ["path"], properties: { path: { type: "string" } } },
+  handler: repoStatus,
+});
+cm.register({
+  name: "issues.list",
+  description: "List issues by state.",
+  sideEffects: "none",
+  inputSchema: { type: "object", properties: { state: { enum: ["open", "closed"] } } },
+  handler: listIssues,
 });
 
-const caps = await cm.capabilities();            // cache by caps.fingerprint
-const bad = await cm.check("class A {}");        // diagnostics carry file:line:col
-console.log("fingerprint:", caps.fingerprint.length > 0, "check ok:", bad.ok);
+// `mycli code run -` : read a program from stdin, print one JSON result.
+async function codeRun(src, input) {
+  const checked = await cm.check(src);
+  if (!checked.ok) return { ok: false, diagnostics: checked.diagnostics };
+  const r = await cm.run(src, { input, timeoutMs: 10_000 });
+  return { ok: r.ok, value: r.value, error: r.error };
+}
 
-const r = await cm.run(
-  "const h = await ops.health.check({verbose: input.v}); h.ok",
-  { input: { v: true }, timeoutMs: 5000 },
-);
-console.log("run:", r.ok, r.value);
+const demo = `
+  const [status, issues] = await Promise.all([
+    ops.repo.status({ path: input.path }),
+    ops.issues.list({ state: "open" }),
+  ]);
+  ({ branch: status.branch, open: issues.length })
+`;
+
+const [cmd, sub] = process.argv.slice(2);
+const src = cmd === "code" && sub === "run"
+  ? await new Promise((res) => { let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => res(s)); })
+  : demo;
+console.log(JSON.stringify(await codeRun(src, { path: "." })));
+// {"ok":true,"value":{"branch":"main","open":2}}
 ```
+
+A wrong program never reaches your handlers:
+
+```js
+await cm.check('ops.issues.list({ state: "all" })');
+// { ok: false, diagnostics: [{ severity: "error", line: 1, col: 17,
+//   message: 'issues.list: state must be one of ["open","closed"]',
+//   hint: "see `code describe issues.list`" }] }
+```
+
+## TypeScript
+
+Types ship with the package. The same CLI, typed:
+
+<!-- quickstart-ts -->
+```ts
+import { createCodeMode, type Result } from "clicodemode";
+
+type Issue = { id: number; state: string };
+
+const cm = createCodeMode({ version: "mycli 1.0.0" });
+cm.register({
+  name: "repo.status",
+  description: "Show repo status.",
+  sideEffects: "none",
+  inputSchema: { type: "object", required: ["path"], properties: { path: { type: "string" } } },
+  handler: async ({ path }) => ({ path, branch: "main", dirty: false }),
+});
+cm.register({
+  name: "issues.list",
+  description: "List issues by state.",
+  sideEffects: "none",
+  inputSchema: { type: "object", properties: { state: { enum: ["open", "closed"] } } },
+  handler: async ({ state }): Promise<Issue[]> => [{ id: 1, state }, { id: 2, state }],
+});
+
+const r: Result = await cm.run(`
+  const [status, issues] = await Promise.all([
+    ops.repo.status({ path: input.path }),
+    ops.issues.list({ state: "open" }),
+  ]);
+  ({ branch: status.branch, open: issues.length })
+`, { input: { path: "." }, timeoutMs: 10_000 });
+console.log(JSON.stringify({ ok: r.ok, value: r.value, error: r.error }));
+```
+
+## Tell the agent what it can call
+
+```js
+const caps = await cm.capabilities(); // every operation + a fingerprint to cache on
+const skill = await cm.skill();       // a SKILL.md describing your CLI's operations
+const docs = await cm.docs();         // the language reference
+```
+
+Print `skill` from a `mycli code skill` command and agents learn your CLI in
+one read.
 
 ## API
 
-`register`, `operations`, `describe`, `capabilities`, `docs`, `skill`,
-`check`, `compile`, `run(src, {file, input, timeoutMs, signal})`,
-`eval(expr, {input, timeoutMs, signal})`. `run`/`eval` return
-`{ok, value, error, diagnostics, ms, stdout}`.
+| method | returns |
+|---|---|
+| `register(op)` | adds an operation: `name` (dotted, lower case), `description`, `handler`, optional `inputSchema`, `sideEffects` (`none` / `local` / `external`), `idempotent` |
+| `check(src)` / `compile(src)` | `{ ok, diagnostics }`, nothing runs |
+| `run(src, { input, timeoutMs, signal, file })` | `{ ok, value, error, diagnostics, ms, stdout }` |
+| `eval(expr, opts)` | same as `run`, for one expression |
+| `operations()` / `describe(name)` / `capabilities()` | the registered contract |
+| `docs()` / `skill()` | text for humans and agents |
 
-- Handlers that throw or reject make the program's call reject; the program can `try/catch` it.
-- Object results from handlers keep key order as the program sees it.
-- Operations may be registered before the WASM loads; it loads lazily on the
-  first call. Registering after the first call rebuilds the engine with the full op set.
+- A handler that throws rejects the program's call; the program can
+  `try/catch` it.
+- `timeoutMs` defaults to 30,000 (0 = none); `signal` is an `AbortSignal`.
+  A pure CPU loop that never awaits is stopped by the engine's step limit
+  (10M steps), not by the timeout.
+- Create one engine per process and reuse it.
 
-### Timeouts and cancellation
+## The language
 
-`timeoutMs` defaults to **30000** ms per call (`0` = no per-call timeout).
-`signal` is an `AbortSignal`. On timeout or abort the call resolves with
-`ok: false` and any host handler promise still pending is abandoned (a
-handler that never resolves cannot hang the call or keep the process alive).
-The engine stays usable afterwards, and other concurrent calls are unaffected.
+A JavaScript subset: `const`/`let`, functions and arrows, destructuring,
+spread, template literals, `async`/`await`, `Promise.all`, `try`/`catch`,
+loops, `pmap` for bounded parallel maps. Not supported (a check error, never
+silent): `class`, `new`, `this`, generators, `switch`, regex, `eval`, dynamic
+`import()`. Full spec: [SPEC.md](https://github.com/muthuishere/clicodemode/blob/main/docs/SPEC.md).
 
-Limit: WASM has no preemption. Timeout and abort take effect when the program
-is waiting on a host operation (or between calls into one); they cannot
-interrupt a pure CPU loop that never awaits. CPU-bound loops are stopped by
-`limits.max_steps` (engine default 10,000,000 steps, an error, not a hang).
-Set `limits.max_steps` for untrusted programs. `limits.timeout_ms` is also
-available but, being a Go-side timer, can keep the Node process alive until it
-expires.
+## Security
 
-## Security model
+- A program can call only the operations you registered. Validate arguments
+  and check permissions inside each handler: **your handlers own
+  authorization and file/process security.**
+- `exec` and `shell` are denied in this package.
+- It is not a sandbox for hostile code, and WebAssembly does not make it one.
 
-- The engine owns language validation: unsupported syntax, unknown operations
-  and bad `exec` argv are rejected before anything runs.
-- **The host (your handlers) owns authorization, path and exec security.**
-  A program can call exactly the operations you registered, with arguments it
-  chooses; validate arguments and enforce permissions inside each handler.
-- `exec` / `shell` are **denied** in this build: the program gets a diagnostic
-  such as `running "echo" is not permitted: this host allows no external
-  programs`. Run commands, if you need them, from your own handlers.
+## About this package
 
-## Size, startup, and reuse
+The engine is the Go library [clicodemode](https://github.com/muthuishere/clicodemode)
+compiled to WebAssembly; this package loads it and passes your handlers in.
+Go is the primary implementation; the Node package is **experimental** and
+follows the same version (0.6.2). The `.wasm` is about 2.1 MB gzipped; a cold
+start (load plus one run) takes about 55 ms on Apple Silicon with Node 24.
+Node 20 or newer.
 
-- `dist/codemode.wasm` is about 7.8 MB raw, 2.1 MB gzipped (the npm tarball is
-  compressed). Node memory after loading the engine is roughly 120 MB RSS.
-- Cold start (load WASM and run one program) measured about 55 ms on an Apple
-  Silicon laptop with Node 24. Treat this as indicative only.
-- **Reuse one engine (`createCodeMode`) per process.** Each engine instance is
-  cheap, but program runs are the unit of work; do not create one per call.
-  The WASM module itself is loaded once per process.
-
-## Not supported
-
-The program language is a JavaScript subset: no `class`, `new`, `this`,
-generators, `switch`, regex, dynamic `import()`. See
-[docs/SPEC.md](../docs/SPEC.md) for the full language and semantics. The
-`policy` option of the Go API is not exposed here.
-
-## Other runtimes
-
-The Node loader lives in `src/wasm.ts`; `loadWasm(bytes)` boots the engine from
-bytes once `wasm_exec.js` has defined `globalThis.Go`. A browser or bundler
-entry can fetch the wasm and call it; not shipped yet.
+Also for [Go](https://pkg.go.dev/github.com/muthuishere/clicodemode),
+[Python](https://pypi.org/project/clicodemode/) and
+[Rust](https://crates.io/crates/clicodemode). MIT licensed.
