@@ -60,6 +60,9 @@ type Diagnostic struct {
 	Col      int    `json:"col"`
 	Message  string `json:"message"`
 	Hint     string `json:"hint,omitempty"`
+	// Snippet is the source line with a caret under the column (set by
+	// Session runs).
+	Snippet string `json:"snippet,omitempty"`
 }
 
 func (d Diagnostic) String() string {
@@ -540,7 +543,11 @@ func (e *Engine) newInterp(ctx context.Context, file string) *js.Interp {
 	if out == nil {
 		out = os.Stderr
 	}
-	it := js.New(ctx, js.Config{Limits: e.Policy.Limits, Stdout: out, Loader: e.loader(file)})
+	return e.newInterpCfg(ctx, file, js.Config{Limits: e.Policy.Limits, Stdout: out, Loader: e.loader(file)})
+}
+
+func (e *Engine) newInterpCfg(ctx context.Context, file string, cfg js.Config) *js.Interp {
+	it := js.New(ctx, cfg)
 	it.Define("call", &js.Builtin{Name: "call", Fn: func(r *js.Runner, _ js.Value, args []js.Value) (js.Value, error) {
 		if len(args) == 0 {
 			return nil, typeErr("call(name, args) needs an operation name")

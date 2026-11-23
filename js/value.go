@@ -151,6 +151,9 @@ func (p *Promise) onSettle(f func()) {
 
 // ---- conversions ----
 
+// TypeOf is JavaScript's typeof (null is "object").
+func TypeOf(v Value) string { return typeOf(v) }
+
 func typeOf(v Value) string {
 	switch v.(type) {
 	case undefinedT:

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,6 +34,60 @@ type Config struct {
 	Limits Limits
 	Stdout io.Writer
 	Loader ModuleLoader
+	// Shared, when set, makes this interpreter one run of a session: it uses
+	// the session's interpreter lock, globals and persistent top-level scope.
+	Shared *Shared
+}
+
+// Shared is the state a session keeps across runs: one interpreter lock (so
+// JS from different runs never races), one set of globals and one top-level
+// scope whose declarations carry over from run to run. Each run still gets
+// its own Interp, so its context, limits, background tasks and unhandled
+// rejections belong to that run only.
+type Shared struct {
+	gil     *fifoLock
+	globals *Env
+	scope   *Env
+	once    sync.Once
+}
+
+// NewShared returns empty session state.
+func NewShared() *Shared {
+	sh := &Shared{gil: &fifoLock{}, globals: newEnv(nil)}
+	sh.scope = newEnv(sh.globals)
+	return sh
+}
+
+// Lock runs fn while holding the session's interpreter lock, so it can read
+// or change the persistent scope safely.
+func (sh *Shared) Lock(fn func()) {
+	sh.gil.Lock()
+	defer sh.gil.Unlock()
+	fn()
+}
+
+// Binding is one persistent top-level name.
+type Binding struct {
+	Name  string
+	Kind  string // let, const, var, function
+	Value Value
+}
+
+// Bindings lists the persistent top-level names, sorted by name. Call it
+// inside Lock.
+func (sh *Shared) Bindings() []Binding {
+	out := make([]Binding, 0, len(sh.scope.vars))
+	for n, b := range sh.scope.vars {
+		out = append(out, Binding{Name: n, Kind: b.kind, Value: b.v})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Reset drops every persistent top-level binding. Call it inside Lock.
+func (sh *Shared) Reset() {
+	sh.scope = newEnv(sh.globals)
+	declGen.Add(1)
 }
 
 // Interp runs programs. One Interp runs one program at a time.
@@ -52,7 +107,7 @@ type Interp struct {
 	cancel  context.CancelFunc
 	cfg     Config
 	globals *Env
-	gil     fifoLock
+	gil     *fifoLock
 	steps   atomic.Int64
 	ops     atomic.Int64
 	tasks   sync.WaitGroup
@@ -169,9 +224,15 @@ func New(ctx context.Context, cfg Config) *Interp {
 	}
 	it := &Interp{
 		ctx: ctx, cancel: cancel, cfg: cfg,
+		gil:     &fifoLock{},
 		globals: newEnv(nil),
 		sem:     make(chan struct{}, cfg.Limits.MaxConcurrency),
 		modules: map[string]*module{},
+	}
+	if sh := cfg.Shared; sh != nil {
+		it.gil, it.globals = sh.gil, sh.globals
+		sh.once.Do(func() { installGlobals(it) })
+		return it
 	}
 	installGlobals(it)
 	return it
@@ -184,7 +245,13 @@ func (it *Interp) Context() context.Context { return it.ctx }
 func (it *Interp) Close() { it.cancel() }
 
 // Define adds a global binding (read-only to the program).
-func (it *Interp) Define(name string, v Value) { it.globals.declare(name, v, "const") }
+func (it *Interp) Define(name string, v Value) {
+	if it.cfg.Shared != nil { // globals are shared with runs still in flight
+		it.gil.Lock()
+		defer it.gil.Unlock()
+	}
+	it.globals.declare(name, v, "const")
+}
 
 // Acquire takes a host-concurrency slot; release it with the returned func.
 func (it *Interp) Acquire() (func(), error) {
@@ -207,6 +274,7 @@ type binding struct {
 type Env struct {
 	vars   map[string]*binding
 	parent *Env
+	redecl map[string]bool // session scope: names a run may declare again
 }
 
 func newEnv(parent *Env) *Env { return &Env{parent: parent} } // vars allocated on first declare
@@ -442,6 +510,53 @@ func (it *Interp) Run(prog *Program, file string) (Value, error) {
 	return res, nil
 }
 
+// RunTop runs a program in the session's persistent top-level scope (see
+// Shared) and returns once the top level and its result have finished. Unlike
+// Run it does not wait for background work (unawaited async calls, .then
+// callbacks); call Wait for that. Without Shared it uses a fresh scope.
+func (it *Interp) RunTop(prog *Program, file string) (Value, error) {
+	it.gil.Lock()
+	r := &Runner{it: it, file: file}
+	var env *Env
+	if sh := it.cfg.Shared; sh != nil {
+		env = sh.scope
+		env.redecl = make(map[string]bool, len(env.vars))
+		for n := range env.vars { // REPL rule: a later run may declare a name again
+			env.redecl[n] = true
+		}
+	}
+	res, exports, err := r.runModuleIn(prog, file, env)
+	if env != nil {
+		env.redecl = nil
+	}
+	if err == nil {
+		if d, ok := exports.Get("default"); ok {
+			res = d
+		}
+		res, err = r.Await(res, prog)
+	}
+	it.gil.Unlock()
+	if f := it.fatalErr(); f != nil {
+		return nil, f
+	}
+	if err == nil && it.ctx.Err() != nil {
+		err = it.stopErr(prog, file)
+	}
+	return res, err
+}
+
+// Wait waits for the background work of a RunTop and reports a fatal error
+// or an unhandled rejection, as Run does at its end.
+func (it *Interp) Wait(prog *Program, file string) error { return it.finish(prog, file, nil) }
+
+// Locked runs fn holding the interpreter lock, without draining background
+// work (unlike WithLock). Use it to read JS values safely.
+func (it *Interp) Locked(fn func()) {
+	it.gil.Lock()
+	defer it.gil.Unlock()
+	fn()
+}
+
 // Eval evaluates a single expression in the global scope.
 func (it *Interp) Eval(x Node, file string) (Value, error) {
 	prog := &Program{base: base{x.P()}, Body: []Node{&ExprStmt{base{x.P()}, x}}}
@@ -449,7 +564,13 @@ func (it *Interp) Eval(x Node, file string) (Value, error) {
 }
 
 func (r *Runner) runModule(prog *Program, file string) (Value, *Object, error) {
-	env := newEnv(r.it.globals)
+	return r.runModuleIn(prog, file, nil)
+}
+
+func (r *Runner) runModuleIn(prog *Program, file string, env *Env) (Value, *Object, error) {
+	if env == nil {
+		env = newEnv(r.it.globals)
+	}
 	exports := NewObject()
 	// Static imports are resolved before the body runs.
 	for _, s := range prog.Body {
@@ -925,9 +1046,10 @@ func (r *Runner) iterate(v Value, at Node) ([]Value, error) {
 func (r *Runner) bindPattern(target Node, v Value, env *Env, kind string) error {
 	switch t := target.(type) {
 	case *Ident:
-		if b, ok := env.vars[t.Name]; ok && kind != "var" && b.kind != "var" && b.kind != "function" {
+		if b, ok := env.vars[t.Name]; ok && kind != "var" && b.kind != "var" && b.kind != "function" && !env.redecl[t.Name] {
 			return r.throwAt(t, "SyntaxError", "identifier %q has already been declared", t.Name)
 		}
+		delete(env.redecl, t.Name) // only once per run
 		env.declare(t.Name, v, kind)
 		return nil
 	case *ArrayPattern:
