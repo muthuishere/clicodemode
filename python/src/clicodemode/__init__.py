@@ -26,7 +26,7 @@ from .types import (
     Result,
 )
 
-__version__ = "0.5.2"
+__version__ = "0.6.0"
 
 __all__ = [
     "CodeMode",

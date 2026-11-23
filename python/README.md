@@ -1,14 +1,79 @@
 # clicodemode for Python (experimental)
 
 Register the commands your Python CLI already has as Code Mode operations, then
-let an agent run small JavaScript-like programs that call them. Version 0.5.2
-tracks the Go library version on `main` (a branch that predates it may still
-embed an older engine; `cm.engine_version()` reports what is embedded).
+let an agent run small JavaScript-like programs that call them.
 
-**Go is the primary library.** This package is an experimental,
-community-evolvable wrapper that ships the *same Go engine* compiled to
-WebAssembly (`GOOS=wasip1`) and runs it with [wasmtime](https://github.com/bytecodealliance/wasmtime-py).
-Python never interprets the language and nothing is reimplemented.
+**Go is the primary library.** This package is an experimental thin wrapper
+around the Go engine compiled to WebAssembly (`GOOS=wasip1`) and run by
+[wasmtime](https://github.com/bytecodealliance/wasmtime-py). The engine owns
+parsing, language semantics and portable validation; Python never interprets
+the language and nothing is reimplemented. The host (your Python code) owns
+authorization and path/exec security. Version 0.6.0 matches the Go library
+version; `cm.engine_version()` reports the engine that is embedded.
+
+## Install (no package registry needed; not on PyPI)
+
+**a) From a GitHub release asset** (the URL is valid once the v0.6.0 release exists):
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate
+pip install https://github.com/muthuishere/clicodemode/releases/download/v0.6.0/clicodemode-0.6.0-py3-none-any.whl
+```
+
+The wheel is pure Python plus the embedded engine (`_codemode.wasm`); the only
+dependency, `wasmtime`, is installed from its own wheels. Needs Python >= 3.9.
+
+**b) From source** (needs Go and Python >= 3.9; Python 3.10+ for the check script):
+
+```bash
+git clone https://github.com/muthuishere/clicodemode && cd clicodemode
+bash python/scripts/check_python.sh        # venv, build wasm, pytest, mypy --strict, wheel in python/dist/
+# or just the two commands it wraps for a wheel:
+bash python/scripts/build_wasm.sh && python3 -m pip install build && python3 -m build python
+pip install python/dist/clicodemode-0.6.0-py3-none-any.whl
+```
+
+## Quickstart (a Click CLI, copy-paste and run)
+
+```python
+import click
+from clicodemode import CodeMode, Policy
+
+@click.group()
+def inventory() -> None:
+    """Existing CLI; nothing here knows about Code Mode."""
+
+@inventory.command()
+@click.argument("sku")
+@click.option("--qty", type=int, default=1)
+def add(sku: str, qty: int) -> dict:
+    """Add stock; returns the new level."""
+    return {"sku": sku, "qty": qty}
+
+cm = CodeMode("1.0.0", policy=Policy(allow=lambda op: op.side_effects != "external"))
+cm.register_click(inventory, "inv")        # becomes ops.inv.add
+
+r = cm.run("""
+export default async () => {
+  const a = await ops.inv.add({ sku: "apple", qty: 5 });
+  return { a, total: a.qty + 2 };
+}""")
+print(r.ok, r.value)                       # True {'a': {'qty': 5, 'sku': 'apple'}, 'total': 7}
+print(cm.engine_version())
+```
+
+## Limitations at a glance (measured: Apple M-series, Python 3.12, wasmtime 51)
+
+| Area | Status |
+|---|---|
+| `exec` / `execStream` / `shell` | denied (the guest has no processes) |
+| Module imports | not available (no filesystem in the guest) |
+| Handlers | synchronous; a running handler cannot be pre-empted, so timeout and cancel apply after it returns. This is **partial** coverage of SPEC LIM-2/LIM-3; a test (`test_slow_handler_is_not_cut_off_by_timeout`) pins it so nobody relies on it |
+| Click / Typer | leaf commands only; group callbacks and group-level options do not run |
+| argparse | leaf (sub-)parsers become operations, nested sub-parsers included; options on a parent parser that precede the sub-command do not apply |
+| Parallelism | `Promise.all` calls are answered one after another by the host |
+| Security | the Go engine owns parsing, semantics and portable validation (syntax, static checks, operation-input schemas). Authorization and filesystem/path/exec security are enforced by your Python host (`Policy.allow`, handler code); WebAssembly does not sandbox them |
+| Cold vs warm | cold: first engine in a process about 300 ms; warm: later engines about 6 ms, a steady `run` with one host call about 0.3 ms (details under "Measured") |
 
 ## Who does what
 
@@ -26,7 +91,7 @@ the guest has no filesystem at all, but your handlers do, with your privileges.
 If a handler takes a path, validate it in the handler (resolve it, check it
 stays under an allowed directory) and deny the operation in `Policy` when in doubt.
 
-## Install, build, test
+## Develop: build and test
 
 ```bash
 # from the repository root; needs Go (to build the engine) and Python >= 3.9 (tested 3.9-3.15)
@@ -47,7 +112,7 @@ Building a wheel without running the script first fails the wasm check in
 
 Runtime dependency: `wasmtime~=51.0` (Apache-2.0 WITH LLVM-exception). Test extras: `click`, `typer`, `pytest`.
 
-## Quickstart
+## API tour
 
 ```python
 from clicodemode import CodeMode, Limits, Policy
@@ -74,7 +139,7 @@ A program that throws, is rejected or times out is a `Result(ok=False)`, not an 
 
 ```python
 cm.register_function("util.greet", greet)          # schema from the signature and type hints
-cm.register_click(group, "inv", exclude=["code"])  # every leaf command becomes inv.<group>.<cmd>
+cm.register_click(group, "inv", exclude=["code"])  # every leaf command becomes inv.<cmd> (sub-groups: inv.<sub>.<cmd>)
 cm.register_typer(app, exclude=["code"])           # via the command Typer builds
 cm.register_argparse(parser, exclude=["code"])     # sub-parsers with set_defaults(func=handler)
 ```
@@ -108,19 +173,6 @@ python examples/click_cli.py code run -e 'await call("inventory.add", {sku: "app
 * **Thread-safety**: one `CodeMode` serialises its calls with a lock, so sharing it is safe but one run at a time; `cancel()` is the only call meant for another thread. Use one instance per thread for parallel runs. A handler cannot re-enter its own engine (raises `UsageError`).
 * **Isolation**: every `CodeMode` has its own WebAssembly instance and its own operations. The compiled module is shared per process.
 * **exec / execStream / shell are denied** (the guest has no processes); programs get a "not permitted" diagnostic or error.
-
-### Limitations at a glance
-
-| Area | Status |
-|---|---|
-| `exec` / `execStream` / `shell` | denied (the guest has no processes) |
-| Module imports | not available (no filesystem in the guest) |
-| Handlers | synchronous; a running handler cannot be pre-empted, so timeout and cancel apply after it returns. This is **partial** coverage of SPEC LIM-2/LIM-3; a test (`test_slow_handler_is_not_cut_off_by_timeout`) pins it so nobody relies on it |
-| Click / Typer | leaf commands only; group callbacks and group-level options do not run |
-| argparse | leaf (sub-)parsers become operations, nested sub-parsers included; options on a parent parser that precede the sub-command do not apply |
-| Parallelism | `Promise.all` calls are answered one after another by the host |
-| Startup | first engine in a process about 300 ms (compiling the module), later engines about 6 ms. Reuse **one engine per process** in a long-lived host |
-| Security | the Go engine owns parsing, semantics and portable validation (syntax, static checks, operation-input schemas). Authorization and filesystem/path/exec security are enforced by your Python host (`Policy.allow`, handler code); WebAssembly does not sandbox them |
 
 ### Differences from native Go
 
