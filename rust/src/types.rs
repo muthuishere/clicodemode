@@ -34,7 +34,7 @@ pub struct Example {
     pub result: Option<Value>,
 }
 
-/// One callable unit. Names are dotted lower-case, e.g. `window.focus`.
+/// One callable unit. Names are dotted segments, e.g. `window.focus` (case-sensitive).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Operation {
     pub name: String,

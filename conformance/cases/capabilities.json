@@ -32,22 +32,22 @@
   "expect": {}
  },
  {
-  "id": "cap3-reject-uppercase",
+  "id": "cap3-reject-non-ascii",
   "spec": [
    "CAP-3"
   ],
-  "description": "uppercase letters are rejected",
+  "description": "segments must be ASCII letters, digits, _ and -",
   "mode": "register",
   "ops": [
    {
-    "name": "Bad.Name",
+    "name": "bad.ná",
     "description": "d"
    }
   ],
   "program": "",
   "expect": {
    "register_error": {
-    "op": "Bad.Name"
+    "op": "bad.ná"
    }
   }
  },
@@ -597,6 +597,25 @@
   "program": "",
   "expect": {
    "fingerprint": "different"
+  }
+ },
+ {
+  "id": "cap3-mixed-case-allowed",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "mixed-case names are allowed and case-sensitive",
+  "ops": [
+   {
+    "name": "gh.listPRs",
+    "description": "d",
+    "returns": 3
+   }
+  ],
+  "program": "await ops.gh.listPRs()",
+  "expect": {
+   "result": 3,
+   "exit": 0
   }
  }
 ]

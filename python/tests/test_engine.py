@@ -427,7 +427,7 @@ def test_engine_version(cm: CodeMode) -> None:
 
 def test_invalid_and_duplicate_registration(cm: CodeMode) -> None:
     cm.register(Operation("a.b"), lambda a: 1)
-    for bad in ("", "A.b", "a..b", "1a", "a b", ".a"):
+    for bad in ("", "-a.b", "a..b", "1a", "a b", ".a", "a.é"):
         with pytest.raises(UsageError):
             cm.register(Operation(bad), lambda a: 1)
     with pytest.raises(UsageError):

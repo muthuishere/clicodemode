@@ -98,6 +98,12 @@ type Binding struct {
 	Value Value
 }
 
+// Define adds or replaces a global binding visible to every later run and
+// to code still running (read-only to programs).
+func (sh *Shared) Define(name string, v Value) {
+	sh.Lock(func() { sh.globals.declare(name, v, "const") })
+}
+
 // Bindings lists the persistent top-level names, sorted by name. Call it
 // inside Lock.
 func (sh *Shared) Bindings() []Binding {
@@ -172,7 +178,7 @@ func (it *Interp) stopErr(at Node, file string) error {
 	if f := it.fatalErr(); f != nil {
 		return f
 	}
-	return &Error{Kind: "runtime", Pos: posOf(at), File: file, Msg: "cancelled: " + it.ctx.Err().Error()}
+	return &Error{Kind: "runtime", Pos: posOf(at), File: file, Msg: "cancelled: " + context.Cause(it.ctx).Error()}
 }
 
 func (it *Interp) newPromise() *Promise {

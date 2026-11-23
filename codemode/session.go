@@ -3,6 +3,7 @@ package codemode
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -96,6 +97,9 @@ type Session struct {
 	events  []Event
 	closed  bool
 	sources map[string]string // file -> source, for snippets of errors in earlier runs' functions
+	notify  chan struct{}     // closed and replaced on every event (PollWait)
+	opsRev  uint64            // registry revision the ops namespace was built from
+	opsSet  bool
 }
 
 type sessionRun struct {
@@ -112,12 +116,35 @@ func (e *Engine) NewSession(cfg SessionConfig) *Session {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Session{e: e, cfg: cfg, sh: js.NewShared(), ctx: ctx, cancel: cancel,
-		runs: map[int64]*sessionRun{}, sources: map[string]string{}}
+		runs: map[int64]*sessionRun{}, sources: map[string]string{}, notify: make(chan struct{})}
+}
+
+// Define adds or replaces a global every later run sees (read-only to
+// programs), for example a host's own namespace of operation wrappers.
+func (s *Session) Define(name string, v js.Value) { s.sh.Define(name, v) }
+
+// refreshOps rebuilds the ops namespace when operations were registered or
+// unregistered since it was last built.
+func (s *Session) refreshOps(firstRev uint64) {
+	rev := s.e.Registry.Revision()
+	s.mu.Lock()
+	if !s.opsSet {
+		s.opsRev, s.opsSet = firstRev, true
+	}
+	stale := rev != s.opsRev
+	s.opsRev = rev
+	s.mu.Unlock()
+	if stale {
+		s.sh.Define("ops", s.e.opsNamespace())
+	}
 }
 
 // Run checks and runs src in the session scope. Top-level declarations stay
-// for later runs, and a later run may declare the same name again. ctx
-// cancels this run only while Run has not returned; after that use Cancel.
+// for later runs, and a later run may declare the same name again. ctx is the
+// parent of the run's context: operation handlers see its values, and
+// cancelling it stops the run, also after Run returned with the run detached
+// (pass context.WithoutCancel(ctx) to let a detached run outlive the caller).
+// Cancel stops a run by handle.
 func (s *Session) Run(ctx context.Context, src string, opts RunOptions) RunResult {
 	start := time.Now()
 	s.mu.Lock()
@@ -144,16 +171,33 @@ func (s *Session) Run(ctx context.Context, src string, opts RunOptions) RunResul
 	}
 
 	limits := s.e.Policy.Limits
-	if t := cmpDur(opts.Timeout, s.cfg.Timeout); t > 0 {
-		limits.Timeout = t
+	timeout := cmpDur(opts.Timeout, s.cfg.Timeout)
+	if timeout == 0 {
+		timeout = limits.Timeout
 	}
-	runCtx, runCancel := context.WithCancel(s.ctx)
+	limits.Timeout = 0 // enforced by the run clock below, which handlers can pause
+	clk := newRunClock()
+	causeCtx, cancelCause := context.WithCancelCause(ctx)
+	stopOnClose := context.AfterFunc(s.ctx, func() { cancelCause(errors.New("session closed")) })
+	runCtx := context.WithValue(causeCtx, clockKey{}, clk)
+	runCancel := func() { cancelCause(context.Canceled) }
+	if timeout > 0 {
+		go func() {
+			select {
+			case <-clk.after(runCtx, timeout):
+				cancelCause(fmt.Errorf("run timeout %v exceeded: %w", timeout, context.DeadlineExceeded))
+			case <-runCtx.Done():
+			}
+		}()
+	}
 	s.mu.Lock()
 	s.runs[id] = &sessionRun{cancel: runCancel}
 	s.sources[file] = src
 	s.mu.Unlock()
 
+	firstRev := s.e.Registry.Revision()
 	it := s.e.newInterpCfg(runCtx, file, js.Config{Limits: limits, Stdout: &eventWriter{s: s, id: id}, Loader: s.e.loader(file), Shared: s.sh})
+	s.refreshOps(firstRev)
 	if s.sh.Claim("input") {
 		it.Define("input", js.InputRef)
 	}
@@ -168,6 +212,7 @@ func (s *Session) Run(ctx context.Context, src string, opts RunOptions) RunResul
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		defer stopOnClose()
 		defer runCancel()
 		defer it.Close()
 		v, err := it.RunTop(p.ast, file)
@@ -202,23 +247,10 @@ func (s *Session) Run(ctx context.Context, src string, opts RunOptions) RunResul
 		close(doneCh)
 	}()
 
-	// Cancel on the caller's ctx until Run returns.
-	stopWatch := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			runCancel()
-		case <-stopWatch:
-		}
-	}()
-	defer close(stopWatch)
-
 	detach := cmpDur(opts.DetachAfter, s.cfg.DetachAfter)
-	var timer <-chan time.Time
+	var timer <-chan struct{}
 	if detach > 0 {
-		t := time.NewTimer(detach)
-		defer t.Stop()
-		timer = t.C
+		timer = clk.after(runCtx, detach)
 	}
 	res := RunResult{Handle: id}
 	var t top
@@ -272,24 +304,46 @@ func cmpDur(a, b time.Duration) time.Duration {
 	return b
 }
 
+// PollWait is Poll that blocks until there is at least one event for the
+// handle (or any run when handle is 0), the run has finished, or ctx is done.
+func (s *Session) PollWait(ctx context.Context, handle int64) ([]Event, bool, error) {
+	for {
+		s.mu.Lock()
+		evs := s.takeLocked(handle)
+		done := s.doneLocked(handle)
+		wake := s.notify
+		s.mu.Unlock()
+		if len(evs) > 0 || done {
+			return evs, done, nil
+		}
+		select {
+		case <-wake:
+		case <-ctx.Done():
+			return nil, false, ctx.Err()
+		}
+	}
+}
+
 // Poll returns the events produced since the last Poll (or since Run
 // returned) for one run, or for every run when handle is 0, and whether that
 // run (or every run) has finished, background work included.
 func (s *Session) Poll(handle int64) (events []Event, done bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	events = s.takeLocked(handle)
-	if handle == 0 {
-		done = true
-		for _, r := range s.runs {
-			if !r.done {
-				done = false
-			}
-		}
-		return events, done
+	return s.takeLocked(handle), s.doneLocked(handle)
+}
+
+func (s *Session) doneLocked(handle int64) bool {
+	if handle != 0 {
+		r := s.runs[handle]
+		return r == nil || r.done
 	}
-	r := s.runs[handle]
-	return events, r == nil || r.done
+	for _, r := range s.runs {
+		if !r.done {
+			return false
+		}
+	}
+	return true
 }
 
 // Cancel stops one run and its background work. It reports whether the run
@@ -335,16 +389,22 @@ func (s *Session) finishRun(id int64) {
 	if r := s.runs[id]; r != nil {
 		r.done = true
 	}
+	s.emitLocked(Event{Handle: id, Kind: "done"}) // with done, so Poll never sees done without the event
 	s.mu.Unlock()
-	s.emit(Event{Handle: id, Kind: "done"})
 }
 
 func (s *Session) emit(ev Event) {
 	s.mu.Lock()
+	s.emitLocked(ev)
+	s.mu.Unlock()
+}
+
+func (s *Session) emitLocked(ev Event) {
 	s.seq++
 	ev.Seq = s.seq
 	s.events = append(s.events, ev)
-	s.mu.Unlock()
+	close(s.notify)
+	s.notify = make(chan struct{})
 }
 
 func (s *Session) takeLocked(handle int64) []Event {

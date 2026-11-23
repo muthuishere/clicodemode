@@ -61,7 +61,7 @@ func TestRegistryValidation(t *testing.T) {
 	reg := NewRegistry("v")
 	h := func(context.Context, map[string]any) (any, error) { return nil, nil }
 	for _, bad := range []Operation{
-		{Name: "Bad.Name", Handler: h},
+		{Name: "Bad Name", Handler: h},
 		{Name: "x..y", Handler: h},
 		{Name: "ok.name"},
 		{Name: "ok.schema", Handler: h, InputSchema: json.RawMessage(`{nope`)},

@@ -48,7 +48,7 @@ export interface CodeMode {
 
 let callSeq = 0;
 
-const NAME_RE = /^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)*$/;
+const NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)*$/;
 
 function parse<T>(s: string): T {
   const v = JSON.parse(s);
@@ -142,7 +142,7 @@ export function createCodeMode(options: CodeModeOptions): CodeMode {
 
   return {
     register(op) {
-      if (!NAME_RE.test(op.name)) throw new Error(`clicodemode: invalid operation name "${op.name}" (want dotted lower-case, e.g. health.check)`);
+      if (!NAME_RE.test(op.name)) throw new Error(`clicodemode: invalid operation name "${op.name}" (want dotted segments of letters, digits, _ and -, e.g. health.check)`);
       if (typeof op.handler !== "function") throw new Error(`clicodemode: operation "${op.name}" has no handler`);
       if (specs.has(op.name)) throw new Error(`clicodemode: operation "${op.name}" already registered`);
       specs.set(op.name, op);

@@ -34,7 +34,7 @@ and returns only the result.
 |---|---|
 | CAP-1 | `capabilities --json` returns `{spec, version, fingerprint, language, operations}`. |
 | CAP-2 | `fingerprint` = `sha256:` + 32 hex chars over spec version, CLI version and every operation's public contract. It MUST be stable for identical registries and MUST change when any operation is added, removed or its contract changes. |
-| CAP-3 | Each operation: `name` (dotted lower-case segments `[a-z][a-z0-9_-]*`), `description`, `input_schema?`, `output_schema?`, `side_effects` (`none|local|external`, default `local`), `idempotent`, `authorization?`, `examples?`. Registration MUST reject bad names, duplicates, missing handlers and invalid JSON schemas. |
+| CAP-3 | Each operation: `name` (dotted segments `[A-Za-z][A-Za-z0-9_-]*`, case-sensitive, never folded), `description`, `input_schema?`, `output_schema?`, `side_effects` (`none|local|external`, default `local`), `idempotent`, `authorization?`, `examples?`. Registration MUST reject bad names, duplicates, missing handlers and invalid JSON schemas. |
 | CAP-4 | `language` lists `features`, `unsupported`, `globals`; it MUST match what the interpreter accepts. |
 | CAP-5 | Caches keyed on capabilities MUST include version, fingerprint and authorization context, and MUST NOT store secret values or approvals. |
 
@@ -48,6 +48,8 @@ and returns only the result.
 | OP-4 | `Policy.Allow` is consulted before every call; a denial rejects the call. |
 | OP-5 | Handler errors reject the promise and are catchable; a handler panic MUST become a rejection, not crash the host. |
 | OP-6 | Operations in flight are bounded by `Limits.MaxConcurrency` (default 32). |
+| OP-7 | `Program.Calls()` lists every static call site whose callee is a dotted member chain or `call("...")`, with the dotted callee, the operation it reaches through `ops`/`call` (if any), the first argument as data with `Unknown` for parts only known at run time, and the position of the callee's first identifier. `Engine.ValidateArgs(name, args)` applies the same schema check as `check`, skipping `Unknown` parts. |
+| OP-8 | `Registry.Unregister(name)` removes an operation; later checks report it as unknown and later calls fail. |
 
 ## 5. Language
 
@@ -114,8 +116,12 @@ LANG-2) and its operations validated as in OP-2.
 |---|---|
 | SES-1 | Top-level declarations of one run are visible to later runs. A later run may declare the same name again; one run may not declare a name twice; a `const` from an earlier run cannot be assigned. |
 | SES-2 | Each run gets its own `input`, its own limits and its own diagnostics; a program with check errors does not run and is reported with a source snippet (`line | text` and a caret). |
-| SES-3 | A run's timeout, its caller's context and `Cancel(handle)` stop that run only; the session and its scope stay usable. |
+| SES-3 | A run's timeout, its caller's context and `Cancel(handle)` stop that run only; the session and its scope stay usable. The caller's context is the parent of the run's context, so cancelling it stops the run even after `Run` returned detached. |
 | SES-4 | `Run` returns when the top level finishes, or at the detach deadline (default 30 s) with `detached: true`; work the program left running continues. `Poll(handle)` returns ordered events (`output`, `result`, `error`, `done`) once each, and whether the run has finished; an unhandled rejection after `Run` returned is an `error` event. `print`/`console.*` output is captured as events, never written to the process. |
+| SES-6 | `Session.Define(name, value)` adds a global for later runs; the `ops` namespace is rebuilt before a run when operations were registered or unregistered since the last run. |
+| SES-7 | Operation handlers in a session run receive a context that descends from the context given to `Run`: its values are visible and its cancellation reaches them. |
+| SES-8 | `PollWait(ctx, handle)` blocks until there is an event for the handle (any run for 0), the run has finished, or ctx is done. |
+| SES-9 | A run's timeout and detach deadline count active time only: `PauseClock(ctx)` in a handler stops the clock until its resume function is called; pauses from parallel handlers nest. |
 | SES-5 | `Vars()` lists persistent bindings with name, kind, type and a short preview, sorted by name; `Reset()` clears them; `Close()` cancels every run and returns once they stopped; runs after `Close` fail. |
 
 ## 11. Security statement
