@@ -1,0 +1,1247 @@
+[
+ {
+  "id": "op1-call-and-ops-equivalent",
+  "spec": [
+   "OP-1"
+  ],
+  "description": "call(name, args) and ops.path(args) are equivalent",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "const a = await call(\"math.add\", {a: 1, b: 2}); const b = await ops.math.add({a: 1, b: 2}); [a, b, a === b]",
+  "expect": {
+   "result": [
+    3,
+    3,
+    true
+   ],
+   "calls": {
+    "math.add": 2
+   },
+   "exit": 0
+  }
+ },
+ {
+  "id": "op1-returns-promise",
+  "spec": [
+   "OP-1"
+  ],
+  "description": "an operation call returns a promise",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "const p = call(\"math.add\", {a: 1, b: 2}); const t = typeof p.then; await p; t",
+  "expect": {
+   "result": "function",
+   "exit": 0
+  }
+ },
+ {
+  "id": "op1-result-shapes",
+  "spec": [
+   "OP-1"
+  ],
+  "description": "operation results of every JSON shape come through unchanged",
+  "ops": [
+   {
+    "name": "s.str",
+    "description": "s",
+    "returns": "text"
+   },
+   {
+    "name": "s.num",
+    "description": "s",
+    "returns": 1.5
+   },
+   {
+    "name": "s.nul",
+    "description": "s",
+    "returns": null
+   },
+   {
+    "name": "s.arr",
+    "description": "s",
+    "returns": [
+     1,
+     [
+      2
+     ],
+     {
+      "a": null
+     }
+    ]
+   },
+   {
+    "name": "s.obj",
+    "description": "s",
+    "returns": {
+     "a": {
+      "b": [
+       1,
+       2
+      ]
+     },
+     "c": "d"
+    }
+   },
+   {
+    "name": "s.bool",
+    "description": "s",
+    "returns": false
+   }
+  ],
+  "program": "[await ops.s.str(), await ops.s.num(), await ops.s.nul(), await ops.s.arr(), await ops.s.obj(), await ops.s.bool()]",
+  "expect": {
+   "result": [
+    "text",
+    1.5,
+    null,
+    [
+     1,
+     [
+      2
+     ],
+     {
+      "a": null
+     }
+    ],
+    {
+     "a": {
+      "b": [
+       1,
+       2
+      ]
+     },
+     "c": "d"
+    },
+    false
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "op1-args-omitted",
+  "spec": [
+   "OP-1"
+  ],
+  "description": "arguments may be omitted when the schema allows",
+  "ops": [
+   {
+    "name": "h.check",
+    "description": "h",
+    "returns": {
+     "ok": true
+    }
+   }
+  ],
+  "program": "await ops.h.check()",
+  "expect": {
+   "result": {
+    "ok": true
+   },
+   "exit": 0
+  }
+ },
+ {
+  "id": "op1-name-characters",
+  "spec": [
+   "OP-1"
+  ],
+  "description": "names with digits, hyphens and underscores are callable by call() and by property when valid identifiers",
+  "ops": [
+   {
+    "name": "file.read_all",
+    "description": "x",
+    "returns": 1
+   },
+   {
+    "name": "a-b.c-d",
+    "description": "x",
+    "returns": 2
+   },
+   {
+    "name": "v2.get",
+    "description": "x",
+    "returns": 3
+   }
+  ],
+  "program": "[await call(\"file.read_all\"), await call(\"a-b.c-d\"), await ops.v2.get()]",
+  "expect": {
+   "result": [
+    1,
+    2,
+    3
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "op1-sequence-and-data-flow",
+  "spec": [
+   "OP-1"
+  ],
+  "description": "results feed later calls",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "const a = await ops.math.add({a: 1, b: 2}); const b = await ops.math.add({a: a, b: 10}); b",
+  "expect": {
+   "result": 3,
+   "calls": {
+    "math.add": 2
+   },
+   "exit": 0
+  }
+ },
+ {
+  "id": "op2-required-missing",
+  "spec": [
+   "OP-2"
+  ],
+  "description": "a missing required property rejects before the handler runs",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "await call(\"math.add\", {a: 1})",
+  "expect": {
+   "error": {
+    "messageContains": "b is required"
+   },
+   "calls": {
+    "math.add": 0
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "op2-wrong-type",
+  "spec": [
+   "OP-2"
+  ],
+  "description": "a wrongly typed property rejects",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "await call(\"math.add\", {a: \"1\", b: 2})",
+  "expect": {
+   "error": {
+    "messageContains": "number"
+   },
+   "calls": {
+    "math.add": 0
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "op2-additional-properties",
+  "spec": [
+   "OP-2"
+  ],
+  "description": "additionalProperties:false rejects unknown keys",
+  "ops": [
+   {
+    "name": "h.check",
+    "description": "h",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "verbose": {
+       "type": "boolean"
+      }
+     },
+     "additionalProperties": false
+    }
+   }
+  ],
+  "program": "await call(\"h.check\", {verbos: true})",
+  "expect": {
+   "error": {
+    "messageContains": "verbos"
+   },
+   "calls": {
+    "h.check": 0
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "op2-unknown-property-allowed-by-default",
+  "spec": [
+   "OP-2"
+  ],
+  "description": "without additionalProperties:false unknown keys pass",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "await call(\"math.add\", {a: 1, b: 2, extra: true})",
+  "expect": {
+   "result": 3,
+   "exit": 0
+  }
+ },
+ {
+  "id": "op2-enum",
+  "spec": [
+   "OP-2"
+  ],
+  "description": "enum restricts values",
+  "ops": [
+   {
+    "name": "m.set",
+    "description": "s",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "mode": {
+       "enum": [
+        "fast",
+        "slow"
+       ]
+      }
+     },
+     "required": [
+      "mode"
+     ]
+    },
+    "returns": "set"
+   }
+  ],
+  "program": "const ok = await call(\"m.set\", {mode: \"fast\"}); let bad = \"no error\"; try { await call(\"m.set\", {mode: \"warp\"}) } catch (e) { bad = \"rejected\" } [ok, bad]",
+  "expect": {
+   "result": [
+    "set",
+    "rejected"
+   ],
+   "calls": {
+    "m.set": 1
+   },
+   "exit": 0
+  }
+ },
+ {
+  "id": "op2-items",
+  "spec": [
+   "OP-2"
+  ],
+  "description": "items validates array elements",
+  "ops": [
+   {
+    "name": "sum.all",
+    "description": "s",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "xs": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      }
+     },
+     "required": [
+      "xs"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "let bad = \"no error\"; try { await call(\"sum.all\", {xs: [1, \"2\"]}) } catch (e) { bad = \"rejected\" } [await call(\"sum.all\", {xs: [1, 2]}), bad]",
+  "expect": {
+   "result": [
+    3,
+    "rejected"
+   ],
+   "calls": {
+    "sum.all": 1
+   },
+   "exit": 0
+  }
+ },
+ {
+  "id": "op2-args-must-be-object",
+  "spec": [
+   "OP-2"
+  ],
+  "description": "arguments that are not an object are rejected",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "await call(\"math.add\", 5)",
+  "expect": {
+   "error": {
+    "messageContains": "object"
+   },
+   "calls": {
+    "math.add": 0
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "op2-array-args-rejected",
+  "spec": [
+   "OP-2"
+  ],
+  "description": "an array is not an acceptable arguments object",
+  "ops": [
+   {
+    "name": "h.check",
+    "description": "h"
+   }
+  ],
+  "program": "await call(\"h.check\", [1])",
+  "expect": {
+   "error": {
+    "messageContains": "object"
+   },
+   "calls": {
+    "h.check": 0
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "op2-validation-error-catchable",
+  "spec": [
+   "OP-2"
+  ],
+  "description": "validation failures are catchable and name the operation",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "let m; try { await call(\"math.add\", {a: 1}) } catch (e) { m = e.message } m.includes(\"math.add\")",
+  "expect": {
+   "result": true,
+   "exit": 0
+  }
+ },
+ {
+  "id": "op3-literal-unknown-diagnostic",
+  "spec": [
+   "OP-3",
+   "CLI-5"
+  ],
+  "description": "a literal unknown operation is a check error with a did-you-mean hint at the string literal",
+  "mode": "check",
+  "ops": [
+   {
+    "name": "health.check",
+    "description": "h"
+   }
+  ],
+  "program": "const a = 1\nawait call(\"health.chek\", {})",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 2,
+     "col": 12,
+     "messageContains": "unknown operation \"health.chek\"",
+     "hintContains": "health.check"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "op3-ops-path-unknown-diagnostic",
+  "spec": [
+   "OP-3"
+  ],
+  "description": "an unknown ops.path call is a check error with a suggestion",
+  "mode": "check",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "await ops.math.ad({})",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "messageContains": "math.ad",
+     "hintContains": "math.add"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "op3-no-suggestion-hint",
+  "spec": [
+   "OP-3"
+  ],
+  "description": "with nothing close the hint points at the operations listing",
+  "mode": "check",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "await call(\"zzzzzzzz.qqqqqqqq\")",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 12,
+     "messageContains": "unknown operation",
+     "hintContains": "operations"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "op3-suggestion-distance-limit",
+  "spec": [
+   "OP-3"
+  ],
+  "description": "a name three edits away still gets a suggestion",
+  "mode": "check",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "program": "await call(\"math.xyz\")",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "messageContains": "unknown operation",
+     "hintContains": "math.add"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "op3-multiple-diagnostics-in-order",
+  "spec": [
+   "OP-3"
+  ],
+  "description": "every unknown literal is reported, in source order",
+  "mode": "check",
+  "ops": [
+   {
+    "name": "health.check",
+    "description": "h"
+   }
+  ],
+  "program": "await call(\"health.chek\")\nawait call(\"nope.x\")\nawait ops.health.check()",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "messageContains": "health.chek"
+    },
+    {
+     "severity": "error",
+     "line": 2,
+     "messageContains": "nope.x"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "op3-run-refuses-nothing-runs",
+  "spec": [
+   "OP-3"
+  ],
+  "description": "a program with an unknown literal operation runs nothing, even earlier valid calls",
+  "ops": [
+   {
+    "name": "health.check",
+    "description": "h"
+   }
+  ],
+  "program": "await call(\"health.check\")\nawait call(\"nope.x\", {})",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 2,
+     "messageContains": "nope.x"
+    }
+   ],
+   "calls": {
+    "health.check": 0
+   },
+   "exit": 2
+  }
+ },
+ {
+  "id": "op3-computed-unknown-fails-at-runtime",
+  "spec": [
+   "OP-3"
+  ],
+  "description": "a computed unknown name fails at run time and the handler never runs",
+  "ops": [
+   {
+    "name": "health.check",
+    "description": "h"
+   }
+  ],
+  "program": "await call(\"health.check\"); const n = \"health.\" + \"nope\"; await call(n)",
+  "expect": {
+   "error": {
+    "messageContains": "unknown operation \"health.nope\""
+   },
+   "calls": {
+    "health.check": 1
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "op3-computed-unknown-catchable",
+  "spec": [
+   "OP-3"
+  ],
+  "description": "a run-time unknown operation error is catchable",
+  "ops": [
+   {
+    "name": "health.check",
+    "description": "h"
+   }
+  ],
+  "program": "let m; try { await call(\"no\" + \".such\") } catch (e) { m = e.name } m",
+  "expect": {
+   "result": "TypeError",
+   "exit": 0
+  }
+ },
+ {
+  "id": "op3-check-lists-operations",
+  "spec": [
+   "OP-3",
+   "CLI-1"
+  ],
+  "description": "compile reports the statically referenced operations, sorted and unique",
+  "mode": "check",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   },
+   {
+    "name": "health.check",
+    "description": "h"
+   }
+  ],
+  "program": "await call(\"math.add\", {a: 1, b: 2})\nawait ops.health.check()\nawait ops.math.add({a: 1, b: 1})",
+  "expect": {
+   "diagnostics": [],
+   "operations": [
+    "health.check",
+    "math.add"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "op4-policy-denies",
+  "spec": [
+   "OP-4"
+  ],
+  "description": "a denying policy rejects the call and the handler never runs",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "number"
+      },
+      "b": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ]
+    },
+    "returns": 3
+   }
+  ],
+  "policy": {
+   "deny_side_effects": [
+    "local"
+   ]
+  },
+  "program": "await call(\"math.add\", {a: 1, b: 2})",
+  "expect": {
+   "error": {
+    "messageContains": "denied"
+   },
+   "calls": {
+    "math.add": 0
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "op4-policy-allows-others",
+  "spec": [
+   "OP-4"
+  ],
+  "description": "the policy only blocks what it names",
+  "ops": [
+   {
+    "name": "h.read",
+    "description": "r",
+    "side_effects": "none",
+    "returns": "read"
+   }
+  ],
+  "policy": {
+   "deny_side_effects": [
+    "local",
+    "external"
+   ]
+  },
+  "program": "await call(\"h.read\")",
+  "expect": {
+   "result": "read",
+   "calls": {
+    "h.read": 1
+   },
+   "exit": 0
+  }
+ },
+ {
+  "id": "op4-policy-denial-catchable",
+  "spec": [
+   "OP-4"
+  ],
+  "description": "a denial is catchable by the program",
+  "ops": [
+   {
+    "name": "w.write",
+    "description": "w",
+    "side_effects": "external"
+   }
+  ],
+  "policy": {
+   "deny_side_effects": [
+    "external"
+   ]
+  },
+  "program": "let m = \"none\"; try { await call(\"w.write\") } catch (e) { m = \"denied\" } m",
+  "expect": {
+   "result": "denied",
+   "calls": {
+    "w.write": 0
+   },
+   "exit": 0
+  }
+ },
+ {
+  "id": "op4-policy-consulted-every-call",
+  "spec": [
+   "OP-4"
+  ],
+  "description": "the policy is consulted for each call, not once per program",
+  "ops": [
+   {
+    "name": "a.read",
+    "description": "r",
+    "side_effects": "none",
+    "returns": "r"
+   },
+   {
+    "name": "b.write",
+    "description": "w",
+    "side_effects": "external",
+    "returns": "w"
+   }
+  ],
+  "policy": {
+   "deny_side_effects": [
+    "external"
+   ]
+  },
+  "program": "const out = []; for (const n of [\"a.read\", \"b.write\", \"a.read\"]) { try { out.push(await call(n)) } catch (e) { out.push(\"denied\") } } out",
+  "expect": {
+   "result": [
+    "r",
+    "denied",
+    "r"
+   ],
+   "calls": {
+    "a.read": 2,
+    "b.write": 0
+   },
+   "exit": 0
+  }
+ },
+ {
+  "id": "op4-default-side-effect-is-local",
+  "spec": [
+   "OP-4",
+   "CAP-3"
+  ],
+  "description": "an operation that does not declare side_effects is treated as local",
+  "ops": [
+   {
+    "name": "unspecified.op",
+    "description": "u"
+   }
+  ],
+  "policy": {
+   "deny_side_effects": [
+    "local"
+   ]
+  },
+  "program": "await call(\"unspecified.op\")",
+  "expect": {
+   "error": {
+    "messageContains": "denied"
+   },
+   "calls": {
+    "unspecified.op": 0
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "op5-handler-error-catchable",
+  "spec": [
+   "OP-5"
+  ],
+  "description": "a handler error rejects the call and carries its message",
+  "ops": [
+   {
+    "name": "fail.always",
+    "description": "f",
+    "throws": "disk on fire"
+   }
+  ],
+  "program": "let m; try { await call(\"fail.always\") } catch (e) { m = e.message } m.includes(\"disk on fire\") && m.includes(\"fail.always\")",
+  "expect": {
+   "result": true,
+   "exit": 0
+  }
+ },
+ {
+  "id": "op5-handler-error-uncaught",
+  "spec": [
+   "OP-5"
+  ],
+  "description": "an uncaught handler error fails the run",
+  "ops": [
+   {
+    "name": "fail.always",
+    "description": "f",
+    "throws": "disk on fire"
+   }
+  ],
+  "program": "await call(\"fail.always\")",
+  "expect": {
+   "error": {
+    "messageContains": "disk on fire"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "op5-failure-in-promise-all",
+  "spec": [
+   "OP-5"
+  ],
+  "description": "a failing operation inside Promise.all rejects it",
+  "ops": [
+   {
+    "name": "a.ok",
+    "description": "o",
+    "returns": 1
+   },
+   {
+    "name": "b.bad",
+    "description": "b",
+    "throws": "nope"
+   }
+  ],
+  "program": "let r = \"ok\"; try { await Promise.all([call(\"a.ok\"), call(\"b.bad\")]) } catch (e) { r = \"rejected\" } r",
+  "expect": {
+   "result": "rejected",
+   "exit": 0
+  }
+ },
+ {
+  "id": "op5-allsettled-mixed",
+  "spec": [
+   "OP-5"
+  ],
+  "description": "allSettled over operations reports each outcome",
+  "ops": [
+   {
+    "name": "a.ok",
+    "description": "o",
+    "returns": 1
+   },
+   {
+    "name": "b.bad",
+    "description": "b",
+    "throws": "nope"
+   }
+  ],
+  "program": "(await Promise.allSettled([call(\"a.ok\"), call(\"b.bad\")])).map(r => r.status)",
+  "expect": {
+   "result": [
+    "fulfilled",
+    "rejected"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "op5-handler-panic-becomes-rejection",
+  "spec": [
+   "OP-5"
+  ],
+  "description": "a crashing handler becomes a catchable rejection and the run continues",
+  "ops": [
+   {
+    "name": "bad.op",
+    "description": "b",
+    "panics": true
+   },
+   {
+    "name": "good.op",
+    "description": "g",
+    "returns": "still alive"
+   }
+  ],
+  "program": "let r; try { await call(\"bad.op\") } catch (e) { r = \"rejected\" } [r, await call(\"good.op\")]",
+  "expect": {
+   "result": [
+    "rejected",
+    "still alive"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "op6-default-concurrency-bound",
+  "spec": [
+   "OP-6"
+  ],
+  "description": "no more than 32 operations are ever in flight by default",
+  "ops": [
+   {
+    "name": "slow.op",
+    "description": "s",
+    "delay_ms": 15,
+    "returns": 1
+   }
+  ],
+  "program": "await Promise.all(Array.from({length: 40}, () => call(\"slow.op\")))",
+  "expect": {
+   "result": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "calls": {
+    "slow.op": 40
+   },
+   "max_in_flight_at_most": 32,
+   "exit": 0
+  }
+ },
+ {
+  "id": "op6-configured-concurrency-bound",
+  "spec": [
+   "OP-6",
+   "LIM-1"
+  ],
+  "description": "MaxConcurrency bounds operations in flight and every call still completes",
+  "ops": [
+   {
+    "name": "slow.op",
+    "description": "s",
+    "delay_ms": 20,
+    "returns": 1
+   }
+  ],
+  "limits": {
+   "max_concurrency": 3
+  },
+  "program": "const r = await Promise.all(Array.from({length: 9}, (_, i) => call(\"slow.op\"))); r.length",
+  "expect": {
+   "result": 9,
+   "calls": {
+    "slow.op": 9
+   },
+   "max_in_flight_at_most": 3,
+   "exit": 0
+  }
+ }
+]

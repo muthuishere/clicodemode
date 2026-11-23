@@ -1,0 +1,1512 @@
+[
+ {
+  "id": "lang1-arith-precedence",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "multiplication and division bind tighter than + and -",
+  "program": "1 + 2 * 3 - 4 / 2",
+  "expect": {
+   "result": 5,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-pow-right-assoc",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "** is right associative",
+  "program": "2 ** 3 ** 2",
+  "expect": {
+   "result": 512,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-string-concat-coercion",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "+ concatenates once either side is a string, left to right",
+  "program": "[\"a\" + 1 + 2, 1 + 2 + \"a\", \"5\" - 2, \"5\" * \"2\"]",
+  "expect": {
+   "result": [
+    "a12",
+    "3a",
+    3,
+    10
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-template-literal",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "template literal interpolates expressions",
+  "program": "const n = 3; `n=${n + 1}!`",
+  "expect": {
+   "result": "n=4!",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-template-nested",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "template literals nest",
+  "program": "`a${`b${1 + 1}`}c`",
+  "expect": {
+   "result": "ab2c",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-template-coercion",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "interpolated values are stringified like String()",
+  "program": "`${null} ${undefined} ${[1, 2]} ${true} ${1.5}`",
+  "expect": {
+   "result": "null undefined 1,2 true 1.5",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-let-const-assign",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "let reassignment and compound assignment operators",
+  "program": "let x = 1; x += 2; x *= 3; x -= 1; x /= 2; const y = x ** 2; [x, y]",
+  "expect": {
+   "result": [
+    4,
+    16
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-const-reassign-fails",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "assigning to a const is a runtime error on that line",
+  "program": "const c = 1\nc = 2",
+  "expect": {
+   "error": {
+    "messageContains": "constant",
+    "line": 2
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lang1-undeclared-fails",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "calling an undeclared name fails the run",
+  "program": "nope()",
+  "expect": {
+   "error": {
+    "messageContains": "nope"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lang1-equality",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "== coerces, === does not, NaN is never equal to itself",
+  "program": "[1 == \"1\", 1 === \"1\", null == undefined, null === undefined, NaN === NaN, 0 == \"\", \"a\" != \"b\", 1 !== 1]",
+  "expect": {
+   "result": [
+    true,
+    false,
+    true,
+    false,
+    false,
+    true,
+    true,
+    false
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-typeof",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "typeof covers every value kind and undeclared names",
+  "program": "[typeof 1, typeof \"s\", typeof true, typeof null, typeof undefined, typeof nope, typeof (() => 1), typeof [], typeof {}]",
+  "expect": {
+   "result": [
+    "number",
+    "string",
+    "boolean",
+    "object",
+    "undefined",
+    "undefined",
+    "function",
+    "object",
+    "object"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-truthiness",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "falsy values are 0 empty-string null undefined NaN false; everything else is truthy",
+  "program": "[!!0, !!\"\", !!null, !!undefined, !!NaN, !![], !!{}, !!\"0\", !!-1]",
+  "expect": {
+   "result": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-nullish-logical",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "?? only replaces null/undefined; || and && use truthiness and return operands",
+  "program": "[null ?? 1, 0 ?? 1, undefined ?? \"d\", 0 || 1, \"\" && 2, \"a\" && 2, null || undefined]",
+  "expect": {
+   "result": [
+    1,
+    0,
+    "d",
+    1,
+    "",
+    2,
+    null
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-optional-chaining",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "?. short-circuits member, index and call on null/undefined",
+  "program": "const o = {a: null, f: () => 7}; [o.a?.b, o.a?.b.c.d, o.g?.(), o.f?.(), o?.a, o.a?.[\"x\"]]",
+  "expect": {
+   "result": [
+    null,
+    null,
+    null,
+    7,
+    null,
+    null
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-modulo",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "% takes the sign of the dividend",
+  "program": "[7 % 3, -7 % 3, 7 % -3, 5.5 % 2]",
+  "expect": {
+   "result": [
+    1,
+    -1,
+    1,
+    1.5
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-comparison",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "relational operators compare numbers numerically and two strings lexicographically",
+  "program": "[\"a\" < \"b\", \"10\" < \"9\", 10 < 9, \"10\" < 9, 2 >= 2, 3 <= 2]",
+  "expect": {
+   "result": [
+    true,
+    true,
+    false,
+    false,
+    true,
+    false
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-bitwise",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "bitwise operators work on signed 32-bit integers",
+  "program": "[5 & 3, 5 | 3, 5 ^ 3, ~5, 1 << 3, -16 >> 2, -16 >>> 28]",
+  "expect": {
+   "result": [
+    1,
+    7,
+    6,
+    -6,
+    8,
+    -4,
+    15
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-update-ops",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "prefix and postfix ++/-- return the new and old value",
+  "program": "let i = 1; [i++, i, ++i, i--, --i]",
+  "expect": {
+   "result": [
+    1,
+    2,
+    3,
+    3,
+    1
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-logical-assign",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "??= ||= &&= assign only when the condition holds",
+  "program": "let a = null; a ??= 5; let b = 1; b &&= 7; let c = 0; c ||= 9; let d = 2; d ??= 8; [a, b, c, d]",
+  "expect": {
+   "result": [
+    5,
+    7,
+    9,
+    2
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-in-operator",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "in tests own and inherited property names on objects",
+  "program": "[(\"a\" in {a: 1}), (\"b\" in {a: 1})]",
+  "expect": {
+   "result": [
+    true,
+    false
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-comma-sequence",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "comma operator evaluates left to right and yields the last",
+  "program": "let i = 0, j = 10; i++, j--; [i, j, (1, 2, 3)]",
+  "expect": {
+   "result": [
+    1,
+    9,
+    3
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-object-array-literals",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "member and index access on nested literals",
+  "program": "const o = {a: 1, b: [1, 2, {c: 3}]}; [o.b[2].c + o[\"a\"], o.b.length]",
+  "expect": {
+   "result": [
+    4,
+    3
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-object-shorthand-computed",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "shorthand props, computed keys and method shorthand",
+  "program": "const k = \"dyn\"; const a = 1; const o = {a, [k]: 2, [\"x\" + 1]: 3, add(p, q) { return p + q }}; [o.a, o.dyn, o.x1, o.add(2, 3)]",
+  "expect": {
+   "result": [
+    1,
+    2,
+    3,
+    5
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-if-else",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "if / else if / else chain",
+  "program": "let r; if (1 > 2) { r = \"no\" } else if (2 > 1) { r = \"yes\" } else { r = \"?\" } r",
+  "expect": {
+   "result": "yes",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-ternary",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "conditional operator",
+  "program": "const v = 5; [v > 3 ? \"big\" : \"small\", v > 9 ? \"big\" : v > 4 ? \"mid\" : \"small\"]",
+  "expect": {
+   "result": [
+    "big",
+    "mid"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-for-continue",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "classic for with continue",
+  "program": "let s = 0; for (let i = 0; i < 5; i++) { if (i === 3) continue; s += i } s",
+  "expect": {
+   "result": 7,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-for-of-break",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "for-of with break over an array",
+  "program": "let s = 0; for (const x of [1,2,3,4]) { if (x > 2) break; s += x } s",
+  "expect": {
+   "result": 3,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-for-of-string",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "for-of iterates a string by character",
+  "program": "const out = []; for (const ch of \"abc\") out.push(ch); out",
+  "expect": {
+   "result": [
+    "a",
+    "b",
+    "c"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-for-in",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "for-in yields keys as strings, including array indices",
+  "program": "const ks = []; for (const k in {a: 1, b: 2}) ks.push(k); const is = []; for (const i in [5, 6]) is.push(i); [ks, is]",
+  "expect": {
+   "result": [
+    [
+     "a",
+     "b"
+    ],
+    [
+     "0",
+     "1"
+    ]
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-while-do-while",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "while checks first, do-while runs once",
+  "program": "let n = 0; while (n < 10) n += 3; let m = 0; do { m++ } while (m < 0); [n, m]",
+  "expect": {
+   "result": [
+    12,
+    1
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-nested-break",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "break leaves only the innermost loop",
+  "program": "let n = 0; for (const a of [1, 2]) { for (const b of [1, 2, 3]) { if (b === 2) break; n++ } } n",
+  "expect": {
+   "result": 2,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-closure-counter",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "closures keep their own mutable state",
+  "program": "function mk() { let c = 0; return () => ++c } const f = mk(); const g = mk(); f(); f(); [f(), g()]",
+  "expect": {
+   "result": [
+    3,
+    1
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-loop-closure-capture",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "let in a for loop is bound per iteration",
+  "program": "const fs = []; for (let i = 0; i < 3; i++) fs.push(() => i); fs.map(f => f())",
+  "expect": {
+   "result": [
+    0,
+    1,
+    2
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-hoisting",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "function declarations are hoisted",
+  "program": "const r = twice(4); function twice(x) { return x * 2 } r",
+  "expect": {
+   "result": 8,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-block-scope-shadow",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "inner let shadows without touching the outer binding",
+  "program": "let x = 1; const r = []; { let x = 2; r.push(x) } r.push(x); r",
+  "expect": {
+   "result": [
+    2,
+    1
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-default-params",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "defaults apply for undefined only, can read earlier params",
+  "program": "function f(a, b = a * 2) { return b } [f(4), f(1, undefined), f(1, null), f(1, 0)]",
+  "expect": {
+   "result": [
+    8,
+    2,
+    null,
+    0
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-rest-params",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "rest collects remaining arguments",
+  "program": "function f(a, ...r) { return [a, r] } [f(1), f(1, 2, 3)]",
+  "expect": {
+   "result": [
+    [
+     1,
+     []
+    ],
+    [
+     1,
+     [
+      2,
+      3
+     ]
+    ]
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-arrow-forms",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "expression-bodied, block-bodied and object-returning arrows",
+  "program": "const a = x => x + 1; const b = (x, y) => { return x * y }; const c = () => ({k: 1}); [a(1), b(2, 3), c()]",
+  "expect": {
+   "result": [
+    2,
+    6,
+    {
+     "k": 1
+    }
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-iife-recursion",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "IIFE and recursion",
+  "program": "const fib = n => n < 2 ? n : fib(n - 1) + fib(n - 2); [(() => 41 + 1)(), fib(15)]",
+  "expect": {
+   "result": [
+    42,
+    610
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-missing-args-undefined",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "missing arguments are undefined, extra arguments ignored",
+  "program": "function f(a, b) { return [a, b === undefined] } [f(1), f(1, 2, 3)]",
+  "expect": {
+   "result": [
+    [
+     1,
+     true
+    ],
+    [
+     1,
+     false
+    ]
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-destructure-object",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "object destructuring: rename, nested default, rest",
+  "program": "const {a, b: {c = 5} = {}, ...rest} = {a: 1, x: 2, y: 3}; [a, c, rest]",
+  "expect": {
+   "result": [
+    1,
+    5,
+    {
+     "x": 2,
+     "y": 3
+    }
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-destructure-array",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "array destructuring: holes, defaults, rest",
+  "program": "const [p, , q = 9, ...r] = [7, 8, undefined, 1, 2]; [p, q, r]",
+  "expect": {
+   "result": [
+    7,
+    9,
+    [
+     1,
+     2
+    ]
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-destructure-params",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "destructuring in parameters",
+  "program": "const f = ({a, b: [c]}, [d = 4]) => a + c + d; f({a: 1, b: [2]}, [])",
+  "expect": {
+   "result": 7,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-destructure-for-of",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "destructuring in for-of heads",
+  "program": "let s = 0; for (const [k, v] of Object.entries({a: 1, b: 2})) s += v + k.length; s",
+  "expect": {
+   "result": 5,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-destructure-swap",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "swap via array destructuring assignment",
+  "program": "let a = 1, b = 2; [a, b] = [b, a]; [a, b]",
+  "expect": {
+   "result": [
+    2,
+    1
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-spread",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "spread in arrays, objects and calls; later keys win",
+  "program": "const a = [1, 2]; const o = {x: 1, y: 1}; const f = (p, q, r) => p + q + r; [[...a, 3], {...o, y: 2, z: 3}, f(...a, 10), Math.max(...[3, 9, 4])]",
+  "expect": {
+   "result": [
+    [
+     1,
+     2,
+     3
+    ],
+    {
+     "x": 1,
+     "y": 2,
+     "z": 3
+    },
+    13,
+    9
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-try-catch-finally",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "try/catch/finally run in order",
+  "program": "const log = []; try { log.push(\"t\"); throw Error(\"boom\") } catch (e) { log.push(e.message) } finally { log.push(\"f\") } log",
+  "expect": {
+   "result": [
+    "t",
+    "boom",
+    "f"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-finally-return-wins",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "a return in finally overrides the try return",
+  "program": "function f() { try { return 1 } finally { return 2 } } f()",
+  "expect": {
+   "result": 2,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-finally-runs-on-return",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "finally runs even when try returns",
+  "program": "const log = []; function f() { try { return 1 } finally { log.push('f') } } [f(), log]",
+  "expect": {
+   "result": [
+    1,
+    [
+     "f"
+    ]
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-throw-non-error",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "any value can be thrown and caught",
+  "program": "let v; try { throw {code: 7} } catch (e) { v = e.code } v",
+  "expect": {
+   "result": 7,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-rethrow",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "a rethrown error reaches the outer catch",
+  "program": "let m; try { try { throw Error(\"inner\") } catch (e) { throw Error(\"re:\" + e.message) } } catch (e) { m = e.message } m",
+  "expect": {
+   "result": "re:inner",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-optional-catch-binding",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "catch without a binding is legal",
+  "program": "let r = \"a\"; try { throw 1 } catch { r = \"b\" } r",
+  "expect": {
+   "result": "b",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-runtime-error-types",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "runtime faults are catchable TypeErrors",
+  "program": "const out = []; try { null.x } catch (e) { out.push(e.name) } try { undefined() } catch (e) { out.push(e.name) } out",
+  "expect": {
+   "result": [
+    "TypeError",
+    "TypeError"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-error-objects",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Error, TypeError and RangeError constructors (called without new)",
+  "program": "const e = Error(\"m\"); [e.message, e.name, TypeError(\"t\").name, RangeError(\"r\").name, RangeError(\"r\").message]",
+  "expect": {
+   "result": [
+    "m",
+    "Error",
+    "TypeError",
+    "RangeError",
+    "r"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-uncaught-throw",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "an uncaught throw fails the run with the message and line",
+  "program": "const a = 1\nthrow Error(\"kaput\")",
+  "expect": {
+   "error": {
+    "messageContains": "kaput",
+    "line": 2
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lang1-string-methods",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "common string methods",
+  "program": "\"  Hello World \".trim().toLowerCase().split(\" \").join(\"-\") + \"|\" + \"abc\".toUpperCase() + \"|\" + \"abcdef\".slice(1, 3) + \"|\" + \"abcdef\".slice(-2) + \"|\" + \"a-b-c\".replace(\"-\", \"+\")",
+  "expect": {
+   "result": "hello-world|ABC|bc|ef|a+b-c",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-string-queries",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "string search helpers",
+  "program": "[\"hello\".includes(\"ell\"), \"hello\".startsWith(\"he\"), \"hello\".endsWith(\"lo\"), \"hello\".indexOf(\"l\"), \"hello\".indexOf(\"z\"), \"hello\".length, \"abc\".charAt(1), \"ab\".repeat(2), \"5\".padStart(3, \"0\")]",
+  "expect": {
+   "result": [
+    true,
+    true,
+    true,
+    2,
+    -1,
+    5,
+    "b",
+    "abab",
+    "005"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-array-methods",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "map/filter/reduce/find/some/every chains",
+  "program": "const a = [1, 2, 3, 4]; [a.filter(x => x % 2 === 0).map(x => x * 10).reduce((p, q) => p + q, 0), a.find(x => x > 2), a.findIndex(x => x > 2), a.some(x => x > 3), a.every(x => x > 1), a.indexOf(3), a.includes(9)]",
+  "expect": {
+   "result": [
+    60,
+    3,
+    2,
+    true,
+    false,
+    2,
+    false
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-array-mutation",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "push/pop/shift/unshift/splice/reverse/slice/concat/join",
+  "program": "const a = [1, 2]; a.push(3, 4); const p = a.pop(); a.unshift(0); const s = a.shift(); [a, p, s, a.slice(1), a.concat([9], 8), [1, 2, 3].reverse(), a.join('-')]",
+  "expect": {
+   "result": [
+    [
+     1,
+     2,
+     3
+    ],
+    4,
+    0,
+    [
+     2,
+     3
+    ],
+    [
+     1,
+     2,
+     3,
+     9,
+     8
+    ],
+    [
+     3,
+     2,
+     1
+    ],
+    "1-2-3"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-array-sort",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "sort with comparator, and default sort is by string order",
+  "program": "[[3, 1, 10, 2].sort((a, b) => a - b), [3, 1, 10, 2].sort(), ['b', 'a', 'c'].sort()]",
+  "expect": {
+   "result": [
+    [
+     1,
+     2,
+     3,
+     10
+    ],
+    [
+     1,
+     10,
+     2,
+     3
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-array-length-index",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "length, out-of-range index, and index assignment",
+  "program": "const a = [1, 2, 3]; a[3] = 4; [a.length, a[10] === undefined, a[a.length - 1]]",
+  "expect": {
+   "result": [
+    4,
+    true,
+    4
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-array-flat-map",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "flat and flatMap",
+  "program": "[[1, [2]].flat(), [1, 2].flatMap(x => [x, x * 10])]",
+  "expect": {
+   "result": [
+    [
+     1,
+     2
+    ],
+    [
+     1,
+     10,
+     2,
+     20
+    ]
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-array-builtins",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Array.isArray and Array.from",
+  "program": "[Array.isArray([]), Array.isArray({}), Array.from([1, 2]), Array.from({length: 3}, (_, i) => i * 2)]",
+  "expect": {
+   "result": [
+    true,
+    false,
+    [
+     1,
+     2
+    ],
+    [
+     0,
+     2,
+     4
+    ]
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-json-roundtrip",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "JSON.parse/stringify round trip, undefined dropped, nested",
+  "program": "const o = JSON.parse(JSON.stringify({z: 1, a: [true, null, \"x\"], u: undefined})); [o, JSON.stringify({a: undefined, b: 1}), JSON.stringify(\"q\\\"\")]",
+  "expect": {
+   "result": [
+    {
+     "z": 1,
+     "a": [
+      true,
+      null,
+      "x"
+     ]
+    },
+    "{\"b\":1}",
+    "\"q\\\"\""
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-json-indent",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "JSON.stringify with indentation",
+  "program": "JSON.stringify({a: [1]}, null, 2)",
+  "expect": {
+   "result": "{\n  \"a\": [\n    1\n  ]\n}",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-json-parse-error",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "JSON.parse of invalid text throws a catchable error",
+  "program": "let ok = false; try { JSON.parse(\"{nope\") } catch (e) { ok = true } ok",
+  "expect": {
+   "result": true,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-object-helpers",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Object.keys/values/entries/fromEntries/assign",
+  "program": "const o = {a: 1, b: 2}; [Object.keys(o), Object.values(o), Object.entries(o), Object.fromEntries([[\"x\", 1], [\"y\", 2]]), Object.assign({a: 0}, o, {c: 3})]",
+  "expect": {
+   "result": [
+    [
+     "a",
+     "b"
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     [
+      "a",
+      1
+     ],
+     [
+      "b",
+      2
+     ]
+    ],
+    {
+     "x": 1,
+     "y": 2
+    },
+    {
+     "a": 1,
+     "b": 2,
+     "c": 3
+    }
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-number-coercion",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Number, parseInt, parseFloat, isNaN",
+  "program": "[parseInt(\"42px\"), parseInt(\"ff\", 16), parseFloat(\"3.5e1x\"), Number(\"  12 \"), isNaN(Number(\"x\")), Number(\"\"), Number(true), Number(null), isNaN(parseInt(\"z\"))]",
+  "expect": {
+   "result": [
+    42,
+    255,
+    35,
+    12,
+    true,
+    0,
+    1,
+    0,
+    true
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-number-formatting",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "float arithmetic and toFixed",
+  "program": "[0.1 + 0.2 === 0.30000000000000004, 1 / 3, 100, (3.14159).toFixed(2), (2).toFixed(1), 1e21 === 1000000000000000000000, String(1e21), String(-0)]",
+  "expect": {
+   "result": [
+    true,
+    0.3333333333333333,
+    100,
+    "3.14",
+    "2.0",
+    true,
+    "1e+21",
+    "0"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-number-small-decimal-string",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "numbers down to 1e-6 print positionally; below that they use exponent form",
+  "program": "[String(0.000001), String(0.0000001)]",
+  "expect": {
+   "result": [
+    "0.000001",
+    "1e-7"
+   ],
+   "exit": 0
+  },
+  "known_deviation": true
+ },
+ {
+  "id": "lang1-number-large-decimal-string",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "non-integer numbers below 1e21 print positionally, never in exponent form",
+  "program": "[String(123456789.5), String(1234567.25), \"\" + 1e20]",
+  "expect": {
+   "result": [
+    "123456789.5",
+    "1234567.25",
+    "100000000000000000000"
+   ],
+   "exit": 0
+  },
+  "known_deviation": true
+ },
+ {
+  "id": "lang1-infinity-nan",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "division by zero and NaN behaviour",
+  "program": "[1 / 0 === Infinity, -1 / 0 === -Infinity, isNaN(0 / 0), NaN !== NaN, isNaN(4 % 0), isNaN(undefined + 1)]",
+  "expect": {
+   "result": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-math",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Math helpers including the round-half-up trap",
+  "program": "[Math.max(1, 3, 2), Math.min(1, 3, 2), Math.floor(-2.5), Math.ceil(2.1), Math.round(2.5), Math.round(-2.5), Math.abs(-3), Math.sqrt(16), Math.pow(2, 10), Math.trunc(-2.7)]",
+  "expect": {
+   "result": [
+    3,
+    1,
+    -3,
+    3,
+    3,
+    -2,
+    3,
+    4,
+    1024,
+    -2
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-conversions",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "String(), Boolean(), Number() conversions",
+  "program": "[String(12), String(null), String([1, 2]), String(undefined), String(true), Boolean(\"\"), Boolean(\"0\"), Boolean([])]",
+  "expect": {
+   "result": [
+    "12",
+    "null",
+    "1,2",
+    "undefined",
+    "true",
+    false,
+    true,
+    true
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-asi",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "automatic semicolon insertion between lines",
+  "program": "let a = 1\nlet b = 2\na + b",
+  "expect": {
+   "result": 3,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-comments",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "line and block comments are ignored",
+  "program": "// one\nconst a = 1 /* two */ + 2\n/* three\n four */ a",
+  "expect": {
+   "result": 3,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-unicode-strings",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "strings keep unicode; length counts UTF-16 code units",
+  "program": "[\"héllo\".length, \"日本\".length, \"日本\".charAt(0)]",
+  "expect": {
+   "result": [
+    5,
+    2,
+    "日"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-string-length-utf16",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "string length counts UTF-16 code units, so an emoji is 2",
+  "program": "[\"😀\".length, \"a😀\".length]",
+  "expect": {
+   "result": [
+    2,
+    3
+   ],
+   "exit": 0
+  },
+  "known_deviation": true
+ },
+ {
+  "id": "lang1-string-escapes",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "escape sequences in string literals",
+  "program": "[\"a\\nb\".length, \"tab\\tx\".indexOf(\"\\t\"), \"\\u0041\", \"q\\\"q\", 'it\\'s', \"back\\\\slash\".length]",
+  "expect": {
+   "result": [
+    3,
+    3,
+    "A",
+    "q\"q",
+    "it's",
+    10
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang1-getter-free-objects",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "objects are references; arrays alias",
+  "program": "const a = [1]; const b = a; b.push(2); const o = {n: 1}; const p = o; p.n = 5; [a, o.n]",
+  "expect": {
+   "result": [
+    [
+     1,
+     2
+    ],
+    5
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang6-key-order-json",
+  "spec": [
+   "LANG-6"
+  ],
+  "description": "integer-like keys ascend first, then insertion order, in JSON output",
+  "program": "JSON.stringify({b: 1, a: 2, 1: \"x\", 0: \"y\"})",
+  "expect": {
+   "result": "{\"0\":\"y\",\"1\":\"x\",\"b\":1,\"a\":2}",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang6-key-order-keys",
+  "spec": [
+   "LANG-6"
+  ],
+  "description": "Object.keys: canonical integers ascend; '01' and '-1' are ordinary strings in insertion order",
+  "program": "Object.keys({b: 1, \"01\": 2, 2: 3, \"-1\": 4, 1: 5})",
+  "expect": {
+   "result": [
+    "1",
+    "2",
+    "b",
+    "01",
+    "-1"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang6-key-order-for-in-spread",
+  "spec": [
+   "LANG-6"
+  ],
+  "description": "for-in, spread and entries follow the same order",
+  "program": "const o = {z: 1, 10: 1, a: 1, 2: 1}; const ks = []; for (const k in o) ks.push(k); [ks, Object.keys({...o}), Object.entries(o).map(e => e[0])]",
+  "expect": {
+   "result": [
+    [
+     "2",
+     "10",
+     "z",
+     "a"
+    ],
+    [
+     "2",
+     "10",
+     "z",
+     "a"
+    ],
+    [
+     "2",
+     "10",
+     "z",
+     "a"
+    ]
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang6-key-order-assign-reinsert",
+  "spec": [
+   "LANG-6"
+  ],
+  "description": "reassigning an existing key keeps its position; a new key goes last",
+  "program": "const o = {a: 1, b: 2}; o.a = 9; o.c = 3; Object.keys(o).join(\",\") + JSON.stringify(o)",
+  "expect": {
+   "result": "a,b,c{\"a\":9,\"b\":2,\"c\":3}",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang6-key-order-fromentries",
+  "spec": [
+   "LANG-6"
+  ],
+  "description": "Object.fromEntries and Object.assign preserve insertion order with integer keys first",
+  "program": "Object.keys(Object.fromEntries([[\"b\", 1], [\"1\", 2], [\"a\", 3]])).join() + \"|\" + Object.keys(Object.assign({y: 1}, {x: 2, 5: 3})).join()",
+  "expect": {
+   "result": "1,b,a|5,y,x",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang6-key-order-input",
+  "spec": [
+   "LANG-6",
+   "CLI-10"
+  ],
+  "description": "keys of the JSON passed as input keep their document order (integer-like first)",
+  "input": {
+   "b": 1,
+   "a": 2,
+   "1": 3
+  },
+  "program": "Object.keys(input).join()",
+  "expect": {
+   "result": "1,b,a",
+   "exit": 0
+  },
+  "known_deviation": true
+ },
+ {
+  "id": "lang6-key-order-op-result",
+  "spec": [
+   "LANG-6",
+   "OP-1"
+  ],
+  "description": "keys of an operation's JSON result keep their document order",
+  "ops": [
+   {
+    "name": "k.get",
+    "description": "ordered",
+    "returns": {
+     "b": 1,
+     "a": 2,
+     "1": 3
+    }
+   }
+  ],
+  "program": "Object.keys(await ops.k.get()).join()",
+  "expect": {
+   "result": "1,b,a",
+   "exit": 0
+  },
+  "known_deviation": true
+ }
+]
