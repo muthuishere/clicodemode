@@ -96,32 +96,57 @@ footer{border-top:1px solid var(--line);padding:30px 0 60px;color:var(--mute);fo
 <section id="why"><div class="wrap">
   <p class="eyebrow">01 / the idea</p>
   <h2>Put the code loop in the CLI, not only in the agent.</h2>
-  <p class="lead"><a href="https://code.claude.com/docs/en/code-mode">Claude Code's Code Mode</a> (experimental) puts the loop in the agent: Claude writes one JavaScript snippet that makes many tool calls, so model round trips drop. But when that snippet runs <code>kubectl</code> 25 times, it still starts 25 processes. Each one re-reads config, re-authenticates, re-parses arguments and prints raw text that has to be parsed back. CLI CodeMode moves the loop into the CLI: one <code>kubectl code run</code>, one process, typed operations in-process. The two compose: Claude Code's Code Mode can call <code>kubectl code run -</code> once instead of 25 commands.</p>
-  <div class="tablewrap"><table style="min-width:640px">
-    <thead><tr><th></th><th>Claude Code Code Mode calling kubectl 25 times</th><th>CLI CodeMode: <code>kubectl code run</code> once</th></tr></thead>
+  <p class="lead"><a href="https://code.claude.com/docs/en/code-mode">Claude Code's Code Mode</a> (experimental) puts the loop in the agent: one JavaScript snippet makes many tool calls, so model round trips drop. But each CLI command that snippet runs (<code>$`aos window list --json`</code>) is still a separate process that starts the CLI, parses its arguments and prints text the snippet has to parse back. CLI CodeMode puts the loop in the CLI: one <code>code run</code>, one process, and operations return JSON objects in-process. The two compose:</p>
+<pre>// inside Claude Code Code Mode: one process per CLI, not one per command
+const r = await $`aos code run - --input ${JSON.stringify(input)} --json &lt; prog.js`.json()</pre>
+  <p class="note">Model round trips are the same either way (one). What changes is processes, CPU, and how much raw output flows back.</p>
+
+  <h3 class="sub">Measured on real CLIs</h3>
+  <p class="note" style="margin-top:0">Same task both ways, medians, Apple Silicon. "One process per command" is how a Claude Code Code Mode snippet calls a CLI today. Both CLIs below embed CLI CodeMode: <a href="https://github.com/muthuishere/ctx-optimize">ctx-optimize</a> and <a href="https://github.com/muthuishere/aos">aos</a>.</p>
+
+  <p style="margin:18px 0 8px"><strong>ctx-optimize</strong>: query, then <code>card</code> on the top 5 hits, then <code>change_plan</code> (7 calls)</p>
+  <div class="tablewrap"><table style="min-width:520px">
+    <thead><tr><th></th><th>wall</th><th>CPU</th><th>bytes back</th></tr></thead>
     <tbody>
-    <tr><td>model round trips</td><td>1</td><td>1 (the same)</td></tr>
-    <tr><td>processes</td><td>25</td><td><strong>1</strong></td></tr>
-    <tr><td>CLI startup (config, auth, discovery, TLS)</td><td>paid 25 times</td><td><strong>paid once</strong>; one client reused</td></tr>
-    <tr><td>what crosses the boundary</td><td>25 raw text outputs, parsed back in JS</td><td><strong>typed JSON</strong> from in-process operations</td></tr>
+    <tr><td>7 processes, sequential</td><td>68 ms</td><td>167 ms</td><td>28,273</td></tr>
+    <tr><td>7 processes, cards in parallel</td><td>47 ms</td><td>164 ms</td><td>28,273</td></tr>
+    <tr><td><strong><code>ctx-optimize code run</code>, 1 process</strong></td><td><strong>33 ms</strong></td><td><strong>137 ms</strong></td><td><strong>169</strong></td></tr>
+    </tbody></table></div>
+
+  <p style="margin:26px 0 8px"><strong>aos</strong> (each <code>aos</code> process takes about 66 ms to start)</p>
+  <div class="tablewrap"><table style="min-width:520px">
+    <thead><tr><th></th><th>wall</th><th>CPU</th><th>bytes back</th></tr></thead>
+    <tbody>
+    <tr><td>24 read-only calls, 24 processes sequential</td><td>1,644 ms</td><td>1,228 ms</td><td></td></tr>
+    <tr><td>24 calls, 24 processes in parallel</td><td>217 ms</td><td>1,493 ms</td><td></td></tr>
+    <tr><td><strong>24 calls, <code>aos code run</code>, 1 process</strong></td><td><strong>217 ms</strong></td><td><strong>1,012 ms</strong></td><td></td></tr>
+    <tr><td>machine snapshot (4 calls), 4 processes in parallel</td><td>196 ms</td><td>280 ms</td><td>8,612</td></tr>
+    <tr><td><strong>machine snapshot, <code>aos code run</code></strong></td><td>220 ms</td><td><strong>260 ms</strong></td><td><strong>158</strong></td></tr>
+    </tbody></table></div>
+<pre style="margin-top:16px">const [wins, procs, disks, apps] = await Promise.all([
+  ops["window-list"](), ops["process-list"]({ sort: "cpu", top: "5" }),
+  ops["disk-list"](), ops["app-list"]({ running: true }),
+])
+;({ windows: wins.length, topCpu: procs.map(p => p.name), disks: disks.length, runningApps: apps.length })</pre>
+  <p class="note">The honest read: against one process per command run sequentially, CLI CodeMode is several times faster. Against the same commands spawned in parallel, wall time is about even, with less CPU and a tiny answer instead of the raw output. Model round trips are equal to Claude Code's Code Mode.</p>
+
+  <h3 class="sub">JSON objects, not text</h3>
+  <p class="note" style="margin-top:0">Operations return JSON values; failures throw. A host wrapping existing commands gets this with one option:</p>
+<pre>reg.MustRegister(cmdtree.FromRunner("ctx.query", "Find symbols", runQuery,
+    cmdtree.WithJSONResult("--json"), // append --json, return the parsed value, throw on failure
+    cmdtree.WithFlagsLast(),           // for commands that read positionals first
+    cmdtree.WithSideEffects(codemode.SideEffectNone)))</pre>
+  <p class="note">Calling the same CLI repeatedly from one session through its persistent MCP server costs 0.12 ms per call vs 4.68 ms for a new process (demo CLI, 4 ms startup, so a toy number). Check which build a runner sees with <code>mycli code version</code>.</p>
+
+  <h3 class="sub">Where it works</h3>
+  <div class="tablewrap"><table style="min-width:560px">
+    <thead><tr><th></th><th>Claude Code Code Mode alone</th><th>CLI CodeMode</th></tr></thead>
+    <tbody>
     <tr><td>argument validation</td><td>none until each command fails</td><td><strong>schema-checked</strong>; <code>code check</code> before running</td></tr>
     <tr><td>permissions</td><td>per Bash call, matched on command text</td><td><strong>per operation</strong>: side-effect tags + host policy</td></tr>
-    <tr><td>where it works</td><td>Claude Code terminal only (experimental; certain plans and models; not VS Code, Desktop or cloud)</td><td><strong>any agent</strong> (Codex, Cursor, Claude Code, CI), any shell</td></tr>
+    <tr><td>where it works</td><td>Claude Code terminal only (experimental; certain plans and models)</td><td><strong>any agent</strong> (Codex, Cursor, Claude Code, CI), any shell</td></tr>
     <tr><td>who builds it</td><td>the agent</td><td>the CLI author, once, for every agent</td></tr>
     </tbody></table></div>
-  <p class="note">Model round trips are equal; this is not a claim to save any. kubectl is the example CLI: it does not ship CLI CodeMode today, and no kubectl timing is published until measured on a real cluster. Startup savings depend on the CLI.</p>
-  <h3 class="sub">Using both</h3>
-  <p class="note" style="margin-top:0">Inside Claude Code's Code Mode, call the CLI once with data passed in (<code>code run --input</code>) instead of once per command. Check the build on a runner's <code>PATH</code> with <code>mycli code version</code>.</p>
-<pre>// inside Claude Code Code Mode: one process per CLI, not one per command
-const r = await $`mycli code run - --input ${JSON.stringify({ ids })} --json &lt; prog.js`.json()</pre>
-  <div class="tablewrap" style="margin-top:16px"><table style="min-width:480px">
-    <thead><tr><th>per call, same small operation (demo CLI, ~4 ms startup)</th><th>time</th></tr></thead>
-    <tbody>
-    <tr><td>one process per call (<code>$`mycli ...`</code>)</td><td>4.68 ms</td></tr>
-    <tr><td>one <code>code_run</code> call to a persistent <code>democli-mcp</code> session</td><td><strong>0.12 ms</strong></td></tr>
-    <tr><td>25 parallel calls: 25 processes vs one <code>code run</code></td><td>85 ms vs <strong>59 ms</strong></td></tr>
-    </tbody></table></div>
-  <p class="note">Toy CLI with a 4 ms startup, measured on the demo CLI. Real CLIs that read config, authenticate or open connections on start gain more, but that is not measured here. Model round trips are unchanged.</p>
 </div></section>
 
 <section><div class="wrap">
