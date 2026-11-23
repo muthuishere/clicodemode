@@ -1,6 +1,6 @@
 {
   "name": "clicodemode",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Code Mode for JS and TS CLIs: register your commands as operations, agents run a small JavaScript-like program that calls them. Engine is Go compiled to WASM.",
   "type": "module",
   "main": "./dist/index.js",

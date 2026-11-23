@@ -139,7 +139,7 @@ const SpecVersion = "codemode/v0"
 
 // LibraryVersion is this library's release, printed by `code version` so a
 // runner can tell which build is on its PATH.
-const LibraryVersion = "0.6.0"
+const LibraryVersion = "0.6.1"
 
 // Capabilities returns the full capability document with a fingerprint that
 // changes whenever any operation's public contract changes.

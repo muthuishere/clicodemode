@@ -7,7 +7,7 @@ Conformance` skips such a case unless `CONFORMANCE_RUN_DEVIATIONS=1` is set.
 `run-js.mjs` reports a pass of a flagged case as `FIXED` and a failure as
 `DEVIATION` (non-fatal unless `--strict`).
 
-All eight deviations are fixed in library version 0.6.0 (issues #1 to #5),
+All eight deviations are fixed in library version 0.6.1 (issues #1 to #5),
 so no case carries `"known_deviation"` any more and
 `CONFORMANCE_RUN_DEVIATIONS=1 go test ./codemode -run Conformance` has
 nothing extra to run. The table is kept as the record of what each case

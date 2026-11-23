@@ -8,16 +8,16 @@ around the Go engine compiled to WebAssembly (`GOOS=wasip1`) and run by
 [wasmtime](https://github.com/bytecodealliance/wasmtime-py). The engine owns
 parsing, language semantics and portable validation; Python never interprets
 the language and nothing is reimplemented. The host (your Python code) owns
-authorization and path/exec security. Version 0.6.0 matches the Go library
+authorization and path/exec security. Version 0.6.1 matches the Go library
 version; `cm.engine_version()` reports the engine that is embedded.
 
 ## Install (no package registry needed; not on PyPI)
 
-**a) From a GitHub release asset** (the URL is valid once the v0.6.0 release exists):
+**a) From a GitHub release asset** (the URL is valid once the v0.6.1 release exists):
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
-pip install https://github.com/muthuishere/clicodemode/releases/download/v0.6.0/clicodemode-0.6.0-py3-none-any.whl
+pip install https://github.com/muthuishere/clicodemode/releases/download/v0.6.1/clicodemode-0.6.1-py3-none-any.whl
 ```
 
 The wheel is pure Python plus the embedded engine (`_codemode.wasm`); the only
@@ -30,7 +30,7 @@ git clone https://github.com/muthuishere/clicodemode && cd clicodemode
 bash python/scripts/check_python.sh        # venv, build wasm, pytest, mypy --strict, wheel in python/dist/
 # or just the two commands it wraps for a wheel:
 bash python/scripts/build_wasm.sh && python3 -m pip install build && python3 -m build python
-pip install python/dist/clicodemode-0.6.0-py3-none-any.whl
+pip install python/dist/clicodemode-0.6.1-py3-none-any.whl
 ```
 
 ## Quickstart (a Click CLI, copy-paste and run)
