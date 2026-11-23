@@ -50,7 +50,11 @@ pub struct Operation {
     pub idempotent: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub authorization: String,
-    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "null_default",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub examples: Vec<Example>,
 }
 
@@ -116,7 +120,11 @@ pub struct Diagnostic {
 
 impl std::fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}:{}: {}: {}", self.file, self.line, self.col, self.severity, self.message)?;
+        write!(
+            f,
+            "{}:{}:{}: {}: {}",
+            self.file, self.line, self.col, self.severity, self.message
+        )?;
         if !self.hint.is_empty() {
             write!(f, " ({})", self.hint)?;
         }

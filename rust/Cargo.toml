@@ -1,16 +1,25 @@
 [package]
 name = "clicodemode"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "Code Mode for Rust CLIs: register your commands as operations; agents run small JavaScript-like programs that call them."
 license = "MIT"
 readme = "README.md"
-include = ["src/**", "assets/codemode.wasm", "README.md", "examples/**", "tests/**"]
+repository = "https://github.com/muthuishere/clicodemode"
+homepage = "https://github.com/muthuishere/clicodemode"
+keywords = ["cli", "agents", "code-mode", "wasm", "javascript"]
+categories = ["command-line-interface", "development-tools", "wasm"]
+rust-version = "1.86"
+build = "build.rs"
+include = ["src/**", "build.rs", "assets/codemode.wasm", "README.md", "LICENSE", "Cargo.toml", "examples/**", "tests/**"]
 
 [dependencies]
 wasmi = "2.0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [profile.test]
 opt-level = 3

@@ -77,9 +77,20 @@ impl From<serde_json::Error> for Error {
 pub struct RunOptions {
     input: Option<Value>,
     file: Option<String>,
+    timeout_ms: u64,
 }
 
 impl RunOptions {
+    /// Wall-clock limit for this one run, replacing [`Limits::timeout_ms`].
+    ///
+    /// The engine checks it between steps and while waiting on its own
+    /// timers, so an infinite loop is stopped. It cannot interrupt a host
+    /// handler that is already running (handlers are plain synchronous Rust
+    /// calls on your thread): the deadline is noticed once the handler returns.
+    pub fn timeout(mut self, d: std::time::Duration) -> Self {
+        self.timeout_ms = d.as_millis().clamp(1, u64::MAX as u128) as u64;
+        self
+    }
     /// The JSON value exposed to the program as the global `input`.
     pub fn input(mut self, v: Value) -> Self {
         self.input = Some(v);
@@ -129,7 +140,13 @@ impl Session {
             .stack_size(16 << 20)
             .spawn(move || guest::run(rx, tx, e2))
             .expect("spawn engine thread");
-        Session { to_guest: Some(to_guest), from_guest, exit, thread: Some(thread), next_id: 0 }
+        Session {
+            to_guest: Some(to_guest),
+            from_guest,
+            exit,
+            thread: Some(thread),
+            next_id: 0,
+        }
     }
 
     fn send(&self, v: &Value) -> Result<(), Error> {
@@ -191,7 +208,10 @@ impl Session {
                 if msg.get("ok").and_then(Value::as_bool) == Some(true) {
                     return Ok(msg.get("result").cloned().unwrap_or(Value::Null));
                 }
-                let e = msg.get("error").and_then(Value::as_str).unwrap_or("unknown error");
+                let e = msg
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown error");
                 return Err(Error::Engine(e.to_string()));
             }
         }
@@ -246,9 +266,13 @@ impl CodeMode {
             )));
         }
         if self.handlers.contains_key(&op.name) {
-            return Err(Error::Usage(format!("operation {:?} already registered", op.name)));
+            return Err(Error::Usage(format!(
+                "operation {:?} already registered",
+                op.name
+            )));
         }
-        self.handlers.insert(op.name.clone(), Arc::new(Box::new(handler)));
+        self.handlers
+            .insert(op.name.clone(), Arc::new(Box::new(handler)));
         self.ops.push(op);
         self.session = None; // restart with the new contract
         Ok(())
@@ -277,7 +301,11 @@ impl CodeMode {
             self.session = Some(s);
         }
         let mut logs = String::new();
-        let r = self.session.as_mut().unwrap().request(method, params, &self.handlers, &mut logs);
+        let r = self
+            .session
+            .as_mut()
+            .unwrap()
+            .request(method, params, &self.handlers, &mut logs);
         if matches!(r, Err(Error::Runtime(_))) {
             self.session = None;
         }
@@ -285,15 +313,21 @@ impl CodeMode {
         r
     }
 
-    fn typed<T: serde::de::DeserializeOwned>(&mut self, method: &str, params: Value) -> Result<T, Error> {
+    fn typed<T: serde::de::DeserializeOwned>(
+        &mut self,
+        method: &str,
+        params: Value,
+    ) -> Result<T, Error> {
         Ok(serde_json::from_value(self.call(method, params)?)?)
     }
 
     /// Run a program. A program that throws gives `Ok(RunResult { ok: false, .. })`.
     pub fn run(&mut self, src: &str, opts: RunOptions) -> Result<RunResult, Error> {
         let file = opts.file.unwrap_or_else(|| "program.js".into());
-        let mut r: RunResult =
-            self.typed("run", json!({"src": src, "file": file, "input": opts.input}))?;
+        let mut r: RunResult = self.typed(
+            "run",
+            json!({"src": src, "file": file, "input": opts.input, "timeout_ms": opts.timeout_ms}),
+        )?;
         r.stdout = self.last_output.clone();
         Ok(r)
     }
@@ -305,7 +339,10 @@ impl CodeMode {
 
     /// Evaluate one expression with the global `input`.
     pub fn eval_with(&mut self, expr: &str, opts: RunOptions) -> Result<RunResult, Error> {
-        let mut r: RunResult = self.typed("eval", json!({"expr": expr, "input": opts.input}))?;
+        let mut r: RunResult = self.typed(
+            "eval",
+            json!({"expr": expr, "input": opts.input, "timeout_ms": opts.timeout_ms}),
+        )?;
         r.stdout = self.last_output.clone();
         Ok(r)
     }
@@ -356,6 +393,94 @@ fn valid_name(n: &str) -> bool {
         && n.split('.').all(|seg| {
             let mut c = seg.chars();
             matches!(c.next(), Some('a'..='z'))
-                && c.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
+                && c.all(|ch| {
+                    ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-'
+                })
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A session whose "guest" is the test itself: it feeds `lines` to the
+    /// host and then hangs up.
+    fn fake(lines: &[&str]) -> Session {
+        let (to_guest, rx) = channel::<Vec<u8>>();
+        std::mem::forget(rx); // keep the host->guest pipe open so sends succeed
+        let (tx, from_guest) = channel::<Vec<u8>>();
+        for l in lines {
+            tx.send(l.as_bytes().to_vec()).unwrap();
+        }
+        drop(tx);
+        Session {
+            to_guest: Some(to_guest),
+            from_guest,
+            exit: Arc::new(Mutex::new(Some("guest vanished".into()))),
+            thread: None,
+            next_id: 0,
+        }
+    }
+
+    fn req(s: &mut Session) -> Result<Value, Error> {
+        s.request("run", json!({}), &HashMap::new(), &mut String::new())
+    }
+
+    #[test]
+    fn garbage_lines_are_skipped_and_the_reply_is_found() {
+        let mut s = fake(&[
+            "not json at all",
+            "{\"unrelated\":1}",
+            "{\"id\":99,\"ok\":true,\"result\":1}",
+            "{\"id\":1,\"ok\":true,\"result\":{\"a\":2}}",
+        ]);
+        assert_eq!(req(&mut s).unwrap(), json!({"a": 2}));
+    }
+
+    #[test]
+    fn guest_hangup_is_a_runtime_error_not_a_panic() {
+        let mut s = fake(&["garbage"]);
+        match req(&mut s) {
+            Err(Error::Runtime(m)) => assert!(m.contains("guest vanished"), "{m}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn error_reply_is_an_engine_error() {
+        let mut s = fake(&["{\"id\":1,\"ok\":false,\"error\":\"boom\"}"]);
+        assert!(matches!(req(&mut s), Err(Error::Engine(m)) if m == "boom"));
+    }
+
+    #[test]
+    fn call_for_an_unknown_operation_is_answered_with_an_error() {
+        let mut s = fake(&["{\"call\":{\"id\":7,\"name\":\"nope.x\",\"args\":{}}}"]);
+        // the reply goes to the (unread) guest channel; the loop then hits the hangup
+        assert!(matches!(req(&mut s), Err(Error::Runtime(_))));
+    }
+
+    #[test]
+    fn wrong_shaped_result_is_a_json_error_not_a_panic() {
+        // a run reply whose `ok` is a string cannot become a RunResult
+        let mut cm = CodeMode::new("1").unwrap();
+        cm.session = Some(fake(&[
+            "{\"id\":1,\"ok\":true,\"result\":{\"ok\":\"yes\",\"ms\":\"slow\"}}",
+        ]));
+        assert!(matches!(
+            cm.run("1", RunOptions::default()),
+            Err(Error::Json(_))
+        ));
+        let mut cm = CodeMode::new("1").unwrap();
+        cm.session = Some(fake(&["{\"id\":1,\"ok\":true,\"result\":42}"]));
+        assert!(matches!(cm.capabilities(), Err(Error::Json(_))));
+    }
+
+    #[test]
+    fn dead_session_is_dropped_so_the_next_call_restarts() {
+        let mut cm = CodeMode::new("1").unwrap();
+        cm.session = Some(fake(&[]));
+        assert!(matches!(cm.eval("1"), Err(Error::Runtime(_))));
+        assert!(cm.session.is_none());
+        assert_eq!(cm.eval("1 + 1").unwrap().value, json!(2)); // fresh engine
+    }
 }

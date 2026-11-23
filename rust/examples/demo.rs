@@ -27,7 +27,11 @@ fn main() -> Result<(), clicodemode::Error> {
         }"#,
         RunOptions::default().input(json!({"mount": "/"})),
     )?;
-    println!("result: {}  (first run incl. startup: {:?})", r.value, t.elapsed());
+    println!(
+        "result: {}  (first run incl. startup: {:?})",
+        r.value,
+        t.elapsed()
+    );
     println!("program printed: {:?}", r.stdout);
 
     for d in cm.check("class A {}", "prog.js")? {
