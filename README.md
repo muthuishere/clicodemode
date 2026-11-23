@@ -77,7 +77,7 @@ Try the demo: `go run ./cmd/democli code help`.
 - **aos** ([v0.15.2](https://github.com/muthuishere/aos/releases/tag/v0.15.2)):
   `aos code` exposes 254 operations, one per batch verb, through the same path
   as the CLI.
-- **ctx-optimize** ([v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0)):
+- **ctx-optimize** ([v0.16.1](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.1)):
   `ctx-optimize code` over its read-only verbs.
 
 Measured, medians on Apple Silicon:

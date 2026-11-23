@@ -1,12 +1,12 @@
 ---
 title: "ctx-optimize: six read-only verbs with cmdtree"
-description: "How ctx-optimize added `ctx-optimize code` (v0.16.0) by wrapping its read-only verbs with cmdtree: WithJSONResult, WithFlagsLast, WithValidate and WithCheckResult."
+description: "How ctx-optimize added `ctx-optimize code` (v0.16.1) by wrapping its read-only verbs with cmdtree: WithJSONResult, WithFlagsLast, WithValidate and WithCheckResult."
 sidebar:
   label: ctx-optimize
 ---
 
 :::note[Shipped]
-This integration shipped in [ctx-optimize v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0) (`npm i -g @muthuishere/ctx-optimize`), on clicodemode v0.6.1. The code below is copied from it; elisions are marked.
+This integration shipped in [ctx-optimize v0.16.1](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.1) (`npm i -g @muthuishere/ctx-optimize`), on clicodemode v0.6.2. The code below is copied from it; elisions are marked.
 :::
 
 ctx-optimize answers code questions from a prebuilt knowledge graph: `query`, `card`, `change-plan`, `affected`, `path`, `hubs`. Agents typically chain them: query, then a card on each top hit, then a change plan.
@@ -94,6 +94,6 @@ Query, then `card` on the top 5 hits, then `change_plan` (7 calls). Medians, App
 
 ## Sources
 
-- Release: [ctx-optimize v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0)
+- Release: [ctx-optimize v0.16.1](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.1)
 - Registration: [`internal/app/codemode.go`](https://github.com/muthuishere/ctx-optimize/blob/main/internal/app/codemode.go)
 - Agent skill: `internal/skills/bundled/ctx-optimize/references/code-mode.md` on the same branch

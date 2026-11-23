@@ -52,7 +52,7 @@ No. Handlers wrap the functions you have, and `adapters/cmdtree` wraps command b
 
 ## Which CLIs use it?
 
-aos, shipped in [aos v0.15.2](https://github.com/muthuishere/aos/releases/tag/v0.15.2), and ctx-optimize, shipped in [ctx-optimize v0.16.0](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.0). See [Real examples](/clicodemode/examples/aos/).
+aos, shipped in [aos v0.15.2](https://github.com/muthuishere/aos/releases/tag/v0.15.2), and ctx-optimize, shipped in [ctx-optimize v0.16.1](https://github.com/muthuishere/ctx-optimize/releases/tag/v0.16.1). See [Real examples](/clicodemode/examples/aos/).
 
 ## Which languages are supported?
 
