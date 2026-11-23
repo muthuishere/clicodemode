@@ -1,0 +1,267 @@
+[
+ {
+  "id": "lim1-step-budget",
+  "spec": [
+   "LIM-1"
+  ],
+  "description": "an infinite loop is stopped by the step budget",
+  "limits": {
+   "max_steps": 10000
+  },
+  "program": "while (true) {}",
+  "expect": {
+   "error": {
+    "messageContains": "budget"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim1-step-budget-for-loop",
+  "spec": [
+   "LIM-1"
+  ],
+  "description": "a long finite loop exceeds a small budget",
+  "limits": {
+   "max_steps": 10000
+  },
+  "program": "let s = 0; for (let i = 0; i < 1000000; i++) { s += i } s",
+  "expect": {
+   "error": {
+    "messageContains": "budget"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim1-default-budget-allows-work",
+  "spec": [
+   "LIM-1"
+  ],
+  "description": "the default budget lets a 100k-iteration loop finish",
+  "program": "let s = 0; for (let i = 0; i < 100000; i++) { s += i } s",
+  "expect": {
+   "result": 4999950000,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lim1-call-depth",
+  "spec": [
+   "LIM-1"
+  ],
+  "description": "unbounded recursion hits the call depth limit",
+  "program": "function f() { return f() } f()",
+  "expect": {
+   "error": {
+    "messageContains": "call depth"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim1-call-depth-configured",
+  "spec": [
+   "LIM-1"
+  ],
+  "description": "a configured depth limit is honoured",
+  "limits": {
+   "max_call_depth": 50
+  },
+  "program": "function d(n) { return n === 0 ? 0 : 1 + d(n - 1) } d(100)",
+  "expect": {
+   "error": {
+    "messageContains": "call depth"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim1-call-depth-default-allows-300",
+  "spec": [
+   "LIM-1"
+  ],
+  "description": "ordinary recursion 300 deep is fine under the default 512",
+  "program": "function d(n) { return n === 0 ? 0 : 1 + d(n - 1) } d(300)",
+  "expect": {
+   "result": 300,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lim1-timeout",
+  "spec": [
+   "LIM-1"
+  ],
+  "description": "the wall-clock timeout stops a sleeping program",
+  "limits": {
+   "timeout_ms": 50
+  },
+  "program": "await sleep(10000)",
+  "expect": {
+   "error": {
+    "messageContains": ""
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim2-step-budget-not-catchable",
+  "spec": [
+   "LIM-2"
+  ],
+  "description": "try/catch cannot swallow the step budget",
+  "limits": {
+   "max_steps": 10000
+  },
+  "program": "try { while (true) {} } catch (e) { \"swallowed\" }",
+  "expect": {
+   "error": {
+    "messageContains": "budget"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim2-call-depth-not-catchable",
+  "spec": [
+   "LIM-2"
+  ],
+  "description": "try/catch cannot swallow the call depth limit",
+  "program": "function f() { return f() } try { f() } catch (e) { \"swallowed\" }",
+  "expect": {
+   "error": {
+    "messageContains": "call depth"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim2-budget-in-async-callee",
+  "spec": [
+   "LIM-2"
+  ],
+  "description": "a budget hit inside an awaited async callee still ends the run",
+  "limits": {
+   "max_steps": 5000
+  },
+  "program": "try { await (async () => { while (true) {} })() } catch (e) {} \"done\"",
+  "expect": {
+   "error": {
+    "messageContains": "budget"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim2-timeout-during-sleep-not-catchable",
+  "spec": [
+   "LIM-2"
+  ],
+  "description": "a timeout during sleep cannot be caught",
+  "limits": {
+   "timeout_ms": 50
+  },
+  "program": "try { await sleep(10000) } catch (e) {} \"done\"",
+  "expect": {
+   "error": {
+    "messageContains": ""
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim2-timeout-not-swallowed-by-catch-handler",
+  "spec": [
+   "LIM-2"
+  ],
+  "description": "a promise .catch cannot swallow a timeout",
+  "limits": {
+   "timeout_ms": 50
+  },
+  "program": "await sleep(10000).catch(() => \"swallowed\"); \"done\"",
+  "expect": {
+   "error": {
+    "messageContains": ""
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim2-timeout-in-promise-all",
+  "spec": [
+   "LIM-2"
+  ],
+  "description": "a timeout while awaiting Promise.all of sleeps is not catchable",
+  "limits": {
+   "timeout_ms": 50
+  },
+  "program": "try { await Promise.all([sleep(10000), sleep(10000)]) } catch (e) {} \"done\"",
+  "expect": {
+   "error": {
+    "messageContains": ""
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim2-timeout-during-operation",
+  "spec": [
+   "LIM-2",
+   "LIM-3"
+  ],
+  "description": "a timeout while an operation is pending cancels it and cannot be caught",
+  "ops": [
+   {
+    "name": "slow.op",
+    "description": "s",
+    "blocks_until_cancel": true
+   }
+  ],
+  "limits": {
+   "timeout_ms": 50
+  },
+  "program": "try { await call(\"slow.op\") } catch (e) {} \"done\"",
+  "expect": {
+   "error": {
+    "messageContains": ""
+   },
+   "calls": {
+    "slow.op": 1
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim2-top-level-expression-budget",
+  "spec": [
+   "LIM-2"
+  ],
+  "description": "a tiny budget still stops straight-line top-level code",
+  "limits": {
+   "max_steps": 3
+  },
+  "program": "[1,2,3].map(() => 1); [1,2,3].map(() => 1); \"done\"",
+  "expect": {
+   "error": {
+    "messageContains": "budget"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lim2-ordinary-errors-still-catchable",
+  "spec": [
+   "LIM-2"
+  ],
+  "description": "only limits are uncatchable; ordinary errors still are",
+  "limits": {
+   "max_steps": 10000
+  },
+  "program": "let r; try { null.x } catch (e) { r = \"caught\" } r",
+  "expect": {
+   "result": "caught",
+   "exit": 0
+  }
+ }
+]

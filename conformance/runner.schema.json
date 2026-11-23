@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/muthuishere/clicodemode/conformance/runner.schema.json",
+  "title": "CLI CodeMode conformance case file",
+  "description": "A file in conformance/cases/ is a JSON array of cases. Case ids are unique across all files.",
+  "type": "array",
+  "items": { "$ref": "#/$defs/case" },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "spec", "description", "program", "expect"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "Unique, kebab-case, prefixed with the spec family (lang1-, op2-, cap3-...)." },
+        "spec": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" }, "description": "Requirement IDs from docs/SPEC.md this case checks." },
+        "description": { "type": "string" },
+        "known_deviation": { "type": "boolean", "description": "The Go reference engine fails this case; see DEVIATIONS.md. Go skips it. Ports should still run it." },
+        "mode": { "enum": ["run", "eval", "check", "register", "fingerprint"], "default": "run", "description": "run: Run(program); eval: Eval(program as one expression); check: Compile(program), diagnostics only, nothing runs; register: register `ops` in order and expect register_error; fingerprint: compare capability fingerprints of `ops` and `ops_b`." },
+        "file": { "type": "string", "default": "program.js", "description": "File name passed to the engine. `<stdin>` means a program from stdin: imports are unavailable." },
+        "ops": { "type": "array", "items": { "$ref": "#/$defs/op" }, "description": "Stub operations registered (in this order) before the case runs." },
+        "ops_b": { "type": "array", "items": { "$ref": "#/$defs/op" }, "description": "fingerprint mode only: the second registry." },
+        "program": { "type": "string", "description": "Program source, or the expression for mode eval. Empty for register/fingerprint." },
+        "input": { "description": "JSON value exposed as the global `input`. Absent means null." },
+        "limits": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "max_steps": { "type": "integer", "minimum": 1 },
+            "max_call_depth": { "type": "integer", "minimum": 1 },
+            "max_concurrency": { "type": "integer", "minimum": 1 },
+            "timeout_ms": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "policy": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "deny_side_effects": { "type": "array", "items": { "enum": ["none", "local", "external"] }, "description": "Policy.Allow rejects any operation whose side_effects is listed." }
+          }
+        },
+        "expect": { "$ref": "#/$defs/expect" }
+      }
+    },
+    "op": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "input_schema": { "type": "object" },
+        "side_effects": { "enum": ["none", "local", "external"] },
+        "idempotent": { "type": "boolean" },
+        "returns": { "description": "Canned JSON result. Absent or null means the handler resolves to null." },
+        "throws": { "type": "string", "description": "The handler fails with this message." },
+        "panics": { "type": "boolean", "description": "The handler crashes (panic / uncaught exception); the host must survive and reject the call." },
+        "delay_ms": { "type": "integer", "minimum": 0, "description": "Resolve after this many ms (applies before returns/throws)." },
+        "blocks_until_cancel": { "type": "boolean", "description": "Never resolves on its own; ends only when the run is cancelled or times out." },
+        "no_handler": { "type": "boolean", "description": "Register without a handler (must be rejected)." }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messageContains"],
+      "properties": {
+        "severity": { "enum": ["error", "warning"] },
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1, "description": "1-based. Omitted = not asserted." },
+        "col": { "type": "integer", "minimum": 1, "description": "1-based. Omitted = not asserted." },
+        "messageContains": { "type": "string" },
+        "hintContains": { "type": "string" }
+      }
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Exactly one of result, error, diagnostics, register_error (or, for fingerprint mode, fingerprint) decides the outcome; the other fields are extra assertions.",
+      "properties": {
+        "result": { "description": "Canonical JSON value of a successful run. Objects compare as data (key order is checked by programs that expose it). undefined is null." },
+        "error": {
+          "type": "object", "additionalProperties": false, "required": ["messageContains"],
+          "properties": {
+            "messageContains": { "type": "string", "description": "Substring of the failure message. Empty string = any failure." },
+            "line": { "type": "integer", "minimum": 1, "description": "1-based line the failure is reported at (last diagnostic of the result)." }
+          },
+          "description": "The program started and failed."
+        },
+        "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" }, "description": "Exactly these diagnostics, in order, and (outside check mode) nothing ran. [] with mode check means clean." },
+        "register_error": { "type": "object", "additionalProperties": false, "required": ["op"], "properties": { "op": { "type": "string", "description": "Name of the op whose registration must be the first to fail." } } },
+        "fingerprint": { "enum": ["equal", "different"], "description": "Both registries must also produce `sha256:` + 32 hex chars." },
+        "operations": { "type": "array", "items": { "type": "string" }, "description": "check mode: statically referenced operations, sorted and unique (Program.Operations)." },
+        "calls": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 }, "description": "Exact number of times each stub handler ran (0 proves it never ran)." },
+        "stdout": { "type": "string", "description": "Exact print/console.log output." },
+        "max_in_flight_at_most": { "type": "integer", "minimum": 1, "description": "Peak number of simultaneously running stub handlers must not exceed this." },
+        "exit": { "enum": [0, 1, 2], "description": "CLI-3 exit class the outcome maps to: 0 success; 1 the program ran and failed; 2 diagnostics, nothing ran." }
+      }
+    }
+  }
+}

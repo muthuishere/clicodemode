@@ -1,0 +1,311 @@
+[
+ {
+  "id": "cli5-syntax-error-position",
+  "spec": [
+   "CLI-5",
+   "CLI-6"
+  ],
+  "description": "a syntax error is a diagnostic at the offending token, 1-based",
+  "mode": "check",
+  "program": "let x = ;",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 9,
+     "messageContains": "unexpected"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli5-syntax-error-second-line",
+  "spec": [
+   "CLI-5"
+  ],
+  "description": "syntax error on a later line reports that line",
+  "mode": "check",
+  "program": "const a = 1\nlet x = ;",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 2,
+     "col": 9,
+     "messageContains": "unexpected"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli5-unterminated-string",
+  "spec": [
+   "CLI-5"
+  ],
+  "description": "an unterminated string is reported at its opening quote",
+  "mode": "check",
+  "program": "\"abc",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 1,
+     "messageContains": "unterminated"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli5-missing-paren",
+  "spec": [
+   "CLI-5"
+  ],
+  "description": "a missing close paren is reported at the unexpected token",
+  "mode": "check",
+  "program": "if (x {",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 7,
+     "messageContains": ")"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli5-const-needs-init",
+  "spec": [
+   "CLI-5"
+  ],
+  "description": "const without initializer is a syntax error on its line",
+  "mode": "check",
+  "program": "const a = 1\nconst b",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 2,
+     "messageContains": "const"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli5-return-outside-function",
+  "spec": [
+   "CLI-5"
+  ],
+  "description": "top-level return is a syntax error",
+  "mode": "check",
+  "program": "return 1",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 1,
+     "messageContains": "return"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli5-file-name-in-diagnostic",
+  "spec": [
+   "CLI-5"
+  ],
+  "description": "the diagnostic carries the file name that was passed in",
+  "mode": "check",
+  "file": "prog.js",
+  "program": "let x = ;",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "file": "prog.js",
+     "line": 1,
+     "col": 9,
+     "messageContains": "unexpected"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli6-clean-check-is-empty",
+  "spec": [
+   "CLI-6"
+  ],
+  "description": "a valid program yields no diagnostics",
+  "mode": "check",
+  "ops": [
+   {
+    "name": "health.check",
+    "description": "h"
+   }
+  ],
+  "program": "const a = 1\nawait ops.health.check()",
+  "expect": {
+   "diagnostics": [],
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli2-stdin-no-import",
+  "spec": [
+   "CLI-2",
+   "LANG-3"
+  ],
+  "description": "programs from stdin must not import modules",
+  "mode": "check",
+  "file": "<stdin>",
+  "program": "import x from \"./x.js\"\nx",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 1,
+     "messageContains": "import"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli2-stdin-no-npm-import",
+  "spec": [
+   "CLI-2",
+   "LANG-3"
+  ],
+  "description": "a bare npm specifier from stdin is rejected too",
+  "mode": "check",
+  "file": "<stdin>",
+  "program": "import _ from \"lodash\"",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "messageContains": "import"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli2-stdin-import-run-nothing-ran",
+  "spec": [
+   "CLI-2",
+   "CLI-3"
+  ],
+  "description": "run of a stdin program with an import fails before any operation runs",
+  "file": "<stdin>",
+  "ops": [
+   {
+    "name": "ok.op",
+    "description": "ok"
+   }
+  ],
+  "program": "import x from \"./x.js\"\nawait call(\"ok.op\")",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "messageContains": "import"
+    }
+   ],
+   "calls": {
+    "ok.op": 0
+   },
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli2-eval-no-import",
+  "spec": [
+   "CLI-2",
+   "LANG-3"
+  ],
+  "description": "eval expressions cannot import (an import is not an expression)",
+  "mode": "eval",
+  "program": "import(\"./a.js\")",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "messageContains": "import"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang3-no-ambient-globals",
+  "spec": [
+   "LANG-3",
+   "CAP-4"
+  ],
+  "description": "no Node or browser globals leak into programs",
+  "program": "[typeof require, typeof process, typeof fetch, typeof setTimeout, typeof globalThis, typeof window, typeof Buffer, typeof Date, typeof module, typeof __dirname]",
+  "expect": {
+   "result": [
+    "undefined",
+    "undefined",
+    "undefined",
+    "undefined",
+    "undefined",
+    "undefined",
+    "undefined",
+    "undefined",
+    "undefined",
+    "undefined"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "cap4-listed-globals-exist",
+  "spec": [
+   "CAP-4"
+  ],
+  "description": "every global listed in the capabilities document that does not need host policy is defined",
+  "program": "[typeof call, typeof print, typeof sleep, typeof isNaN, typeof parseInt, typeof parseFloat, typeof JSON, typeof Math, typeof ops, typeof console.log, typeof Promise.all, typeof Object.keys, typeof Array.isArray, typeof Error, typeof pmap, typeof stream, typeof String, typeof Number, typeof Boolean]",
+  "expect": {
+   "result": [
+    "function",
+    "function",
+    "function",
+    "function",
+    "function",
+    "function",
+    "object",
+    "object",
+    "object",
+    "function",
+    "function",
+    "function",
+    "function",
+    "function",
+    "function",
+    "function",
+    "function",
+    "function",
+    "function"
+   ],
+   "exit": 0
+  }
+ }
+]

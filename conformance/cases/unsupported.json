@@ -1,0 +1,331 @@
+[
+ {
+  "id": "lang2-class",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "class is a parse error naming the construct",
+  "mode": "check",
+  "program": "class A {}",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 1,
+     "messageContains": "class"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-new",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "new is a parse error at the keyword",
+  "mode": "check",
+  "program": "const d = new Date()",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 11,
+     "messageContains": "new"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-this",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "this is a parse error at the keyword",
+  "mode": "check",
+  "program": "const f = () => this.x",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 17,
+     "messageContains": "this"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-generator-function",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "generator functions are rejected",
+  "mode": "check",
+  "program": "function* g() { yield 1 }",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 0,
+     "messageContains": "generator"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-yield",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "yield is rejected as a generator construct",
+  "mode": "check",
+  "program": "const y = yield 1",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 11,
+     "messageContains": "generator"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-switch",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "switch is a parse error",
+  "mode": "check",
+  "program": "switch (1) { case 1: break }",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 1,
+     "messageContains": "switch"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-delete",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "delete is a parse error on its own line",
+  "mode": "check",
+  "program": "const o = {a: 1}\ndelete o.a",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 2,
+     "col": 1,
+     "messageContains": "delete"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-dynamic-import",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "dynamic import() is a parse error",
+  "mode": "check",
+  "program": "const m = import('x')",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 11,
+     "messageContains": "import"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-regex-literal",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "regex literals are rejected",
+  "mode": "check",
+  "program": "const r = /ab+c/",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 11,
+     "messageContains": "regex"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-eval",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "eval is rejected before running",
+  "mode": "check",
+  "program": "eval(\"1 + 1\")",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 1,
+     "messageContains": "eval"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-multiline-position",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "line numbers are 1-based and count newlines",
+  "mode": "check",
+  "program": "const a = 1\nconst b = 2\nclass C {}",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 3,
+     "col": 1,
+     "messageContains": "class"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-indented-position",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "columns are 1-based and count leading spaces",
+  "mode": "check",
+  "program": "function f() {\n    return new Thing()\n}",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 2,
+     "col": 12,
+     "messageContains": "new"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-nothing-runs",
+  "spec": [
+   "LANG-2",
+   "CLI-3"
+  ],
+  "description": "a program with an unsupported construct is never started, even when earlier statements are fine",
+  "mode": "run",
+  "ops": [
+   {
+    "name": "ok.op",
+    "description": "ok"
+   }
+  ],
+  "program": "await call(\"ok.op\")\nclass A {}",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 2,
+     "col": 1,
+     "messageContains": "class"
+    }
+   ],
+   "calls": {
+    "ok.op": 0
+   },
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-eval-expression-new",
+  "spec": [
+   "LANG-2",
+   "CLI-3"
+  ],
+  "description": "eval of an expression with an unsupported construct fails with a diagnostic and nothing runs",
+  "mode": "eval",
+  "program": "new Date()",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 1,
+     "messageContains": "new"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-for-await",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "for await is rejected",
+  "mode": "check",
+  "program": "async function f() { for await (const x of []) {} }",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "messageContains": "for await"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "lang2-tagged-template",
+  "spec": [
+   "LANG-2"
+  ],
+  "description": "tagged templates are rejected",
+  "mode": "check",
+  "program": "const t = String`x`",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "messageContains": "tagged template"
+    }
+   ],
+   "exit": 2
+  }
+ }
+]

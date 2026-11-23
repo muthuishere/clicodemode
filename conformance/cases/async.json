@@ -1,0 +1,341 @@
+[
+ {
+  "id": "async-await-value",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "await unwraps promises and passes plain values through",
+  "program": "const f = async () => 41; [(await f()) + 1, await 5, await null]",
+  "expect": {
+   "result": [
+    42,
+    5,
+    null
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-sync-until-first-await",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "an async function runs synchronously until its first await",
+  "program": "const log = []; async function f() { log.push(\"a\"); await null; log.push(\"c\") } const p = f(); log.push(\"b\"); await p; log",
+  "expect": {
+   "result": [
+    "a",
+    "b",
+    "c"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-microtask-order",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "promise jobs run in FIFO order: an earlier then runs before a later await continuation",
+  "program": "const log = []; Promise.resolve().then(() => log.push(1)); (async () => { await null; log.push(2) })(); await sleep(5); log",
+  "expect": {
+   "result": [
+    1,
+    2
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-promise-all-order",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Promise.all keeps input order, not completion order, and accepts plain values",
+  "program": "await Promise.all([sleep(20).then(() => \"slow\"), Promise.resolve(\"fast\"), 3])",
+  "expect": {
+   "result": [
+    "slow",
+    "fast",
+    3
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-promise-all-empty",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Promise.all of nothing resolves to []",
+  "program": "await Promise.all([])",
+  "expect": {
+   "result": [],
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-promise-all-rejects",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Promise.all rejects with the first rejection",
+  "program": "let m; try { await Promise.all([Promise.resolve(1), Promise.reject(Error(\"bad\")), sleep(5)]) } catch (e) { m = e.message } m",
+  "expect": {
+   "result": "bad",
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-promise-race",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Promise.race settles with the first to settle",
+  "program": "await Promise.race([sleep(50).then(() => \"slow\"), sleep(1).then(() => \"fast\")])",
+  "expect": {
+   "result": "fast",
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-promise-any",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Promise.any fulfills with the first fulfilment, ignoring rejections",
+  "program": "await Promise.any([Promise.reject(1), sleep(5).then(() => 2), sleep(30).then(() => 3)])",
+  "expect": {
+   "result": 2,
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-promise-any-all-reject",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "Promise.any rejects when everything rejects",
+  "program": "let r = \"no\"; try { await Promise.any([Promise.reject(1), Promise.reject(2)]) } catch (e) { r = \"rejected\" } r",
+  "expect": {
+   "result": "rejected",
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-promise-allsettled",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "allSettled reports every outcome",
+  "program": "await Promise.allSettled([Promise.resolve(1), Promise.reject(\"e\")])",
+  "expect": {
+   "result": [
+    {
+     "status": "fulfilled",
+     "value": 1
+    },
+    {
+     "status": "rejected",
+     "reason": "e"
+    }
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-reject-catch",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "await of a rejected promise throws into try/catch",
+  "program": "let m; try { await Promise.reject(Error(\"no\")) } catch (e) { m = e.message } m",
+  "expect": {
+   "result": "no",
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-throw-rejects",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "a throw inside an async function becomes a rejection",
+  "program": "async function f() { throw Error(\"x\") } await f().catch(e => \"caught \" + e.message)",
+  "expect": {
+   "result": "caught x",
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-then-chain",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "then chains flatten returned promises",
+  "program": "await Promise.resolve(1).then(x => x + 1).then(x => Promise.resolve(x * 10))",
+  "expect": {
+   "result": 20,
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-then-throw-catch",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "an exception in then reaches the next catch, which can recover",
+  "program": "await Promise.resolve(1).then(() => { throw Error(\"t\") }).catch(e => e.message + \"!\")",
+  "expect": {
+   "result": "t!",
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-finally",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "finally runs for both outcomes and passes the original value through",
+  "program": "let n = 0; const v = await Promise.resolve(5).finally(() => { n++ }); let r; try { await Promise.reject(Error(\"z\")).finally(() => { n++ }) } catch (e) { r = e.message } [v, r, n]",
+  "expect": {
+   "result": [
+    5,
+    "z",
+    2
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-await-in-loop",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "await inside loops runs sequentially",
+  "program": "const out = []; for (const x of [3, 1, 2]) { out.push(await sleep(x).then(() => x)) } out",
+  "expect": {
+   "result": [
+    3,
+    1,
+    2
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-await-in-template",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "await may appear inside a template literal in an async function",
+  "program": "const f = async () => `v=${await Promise.resolve(7)}`; await f()",
+  "expect": {
+   "result": "v=7",
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-parallel-vs-sequential-map",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "map of async callbacks gives promises that Promise.all resolves",
+  "program": "await Promise.all([1, 2, 3].map(async x => { await sleep(1); return x * 2 }))",
+  "expect": {
+   "result": [
+    2,
+    4,
+    6
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-sleep-resolves-undefined",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "sleep(ms) resolves to undefined after waiting",
+  "program": "const t = await sleep(1); t === undefined",
+  "expect": {
+   "result": true,
+   "exit": 0
+  }
+ },
+ {
+  "id": "async-await-outside-async",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "await inside a non-async function is a syntax error at the await",
+  "mode": "check",
+  "program": "function f() { await 1 }",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "col": 16,
+     "messageContains": "async"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "async-await-template-outside-async",
+  "spec": [
+   "LANG-1"
+  ],
+  "description": "await inside a template of a non-async function is a syntax error",
+  "mode": "check",
+  "program": "function f() { return `${await 1}` }",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "messageContains": "async"
+    }
+   ],
+   "exit": 2
+  }
+ },
+ {
+  "id": "async-pmap",
+  "spec": [
+   "LANG-1",
+   "CAP-4"
+  ],
+  "description": "pmap maps with bounded parallelism and keeps order",
+  "program": "await pmap([1, 2, 3, 4], async x => { await sleep(5 - x); return x * 2 }, {concurrency: 2})",
+  "expect": {
+   "result": [
+    2,
+    4,
+    6,
+    8
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "cap4-stream-array",
+  "spec": [
+   "CAP-4",
+   "STR-1"
+  ],
+  "description": "stream(array) offers lazy transforms and terminals without processes",
+  "program": "[await stream([1, 2, 3, 4]).filter(x => x % 2 === 0).map(x => x * 10).take(1).toArray(), await stream([1, 2, 3]).count()]",
+  "expect": {
+   "result": [
+    [
+     20
+    ],
+    3
+   ],
+   "exit": 0
+  }
+ }
+]

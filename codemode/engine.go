@@ -1,6 +1,7 @@
 package codemode
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/sha256"
@@ -390,9 +391,11 @@ func hasErrors(ds []Diagnostic) bool {
 func (e *Engine) newInterpInput(ctx context.Context, file string, input json.RawMessage) (*js.Interp, error) {
 	var v any
 	if len(input) > 0 {
-		if err := json.Unmarshal(input, &v); err != nil {
+		pv, err := js.ParseJSON(input) // keeps document key order (LANG-6)
+		if err != nil {
 			return nil, fmt.Errorf("--input is not valid JSON: %v", err)
 		}
+		v = pv
 	}
 	it := e.newInterp(ctx, file)
 	it.Define("input", js.FromGo(v))
@@ -502,11 +505,51 @@ func (e *Engine) invoke(r *js.Runner, name string, a js.Value) (js.Value, error)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
-		return js.FromGo(normalizeJSON(out)), nil
+		return resultValue(out)
 	}), nil
 }
 
-// normalizeJSON makes handler results plain JSON data (struct -> map etc.).
+// OrderedJSON is a handler result given as JSON text. The program sees the
+// objects in it with their keys in document order (integer-like keys first,
+// ascending, as in JavaScript); a Go map[string]any result has no order, so
+// its keys arrive sorted. A bridge to another runtime (WASM, WASI) whose
+// operations return JSON text should return OrderedJSON(text) instead of
+// unmarshalling into any. An encoding/json.RawMessage result is treated the
+// same way. Empty text is null; invalid JSON makes the call reject.
+type OrderedJSON []byte
+
+// MarshalJSON writes the text unchanged, so the order also survives when the
+// result is marshalled again (MCP, CLI).
+func (o OrderedJSON) MarshalJSON() ([]byte, error) {
+	if len(bytes.TrimSpace(o)) == 0 {
+		return []byte("null"), nil
+	}
+	return o, nil
+}
+
+// resultValue turns a handler result into a program value.
+func resultValue(out any) (js.Value, error) {
+	var raw []byte
+	switch x := out.(type) {
+	case OrderedJSON:
+		raw = x
+	case json.RawMessage:
+		raw = x
+	default:
+		return js.FromGo(normalizeJSON(out)), nil
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, nil
+	}
+	v, err := js.ParseJSON(raw)
+	if err != nil {
+		return nil, fmt.Errorf("operation returned invalid JSON: %v", err)
+	}
+	return v, nil
+}
+
+// normalizeJSON makes handler results plain JSON data (struct -> ordered
+// object, fields in declaration order).
 func normalizeJSON(v any) any {
 	switch v.(type) {
 	case nil, bool, string, float64, int, int64, []any, map[string]any:
@@ -516,9 +559,10 @@ func normalizeJSON(v any) any {
 	if err != nil {
 		return fmt.Sprint(v)
 	}
-	var out any
-	_ = json.Unmarshal(b, &out)
-	return out
+	if o, err := js.ParseJSON(b); err == nil {
+		return o
+	}
+	return fmt.Sprint(v)
 }
 
 // loader confines static imports to the module root (default: the entry

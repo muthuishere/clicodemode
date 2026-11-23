@@ -1,0 +1,213 @@
+# DRAFT, never run on GitHub. Runs only when a v* tag is pushed (the owner tags
+# after the PR merges). Publishing uses OIDC trusted publishing: no long-lived
+# registry tokens are stored. Each publish job is gated by a GitHub
+# environment (pypi, npm, crates) that must exist, with required reviewers.
+#
+# One-time setup the workflow cannot do for you (verify against each
+# registry's current docs; a brand-new package name may need a first
+# manual/pending-publisher step):
+#   PyPI: add a (pending) trusted publisher: this repo, workflow release.yml, environment pypi
+#   npm : add a trusted publisher for the package: this repo, workflow release.yml, environment npm
+#   crates.io: add a trusted publisher for the crate: this repo, workflow release.yml, environment crates
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Tag equals every package version
+        run: |
+          go_v=$(sed -n 's/^const LibraryVersion = "\([^"]*\)".*/\1/p' codemode/registry.go)
+          npm_v=$(sed -n 's/^  "version": "\([^"]*\)".*/\1/p' npm/package.json | head -1)
+          rs_v=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' rust/Cargo.toml | head -1)
+          py_v=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' python/pyproject.toml | head -1)
+          echo "tag=${GITHUB_REF_NAME} go=$go_v npm=$npm_v rust=$rs_v python=$py_v"
+          for v in "$go_v" "$npm_v" "$rs_v" "$py_v"; do
+            [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "version mismatch: $v vs ${GITHUB_REF_NAME}"; exit 1; }
+          done
+
+      - name: Test the Go engine before building artifacts
+        run: |
+          go vet ./...
+          go test ./... -count=1
+
+      - name: Build the engine as WebAssembly once
+        run: |
+          mkdir -p out
+          GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o out/codemode-js.wasm ./cmd/codemode-wasm
+          GOOS=wasip1 GOARCH=wasm go build -trimpath -ldflags="-s -w" -o out/codemode.wasm ./cmd/codemode-wasi
+          cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" out/wasm_exec.js
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm
+          path: out/*
+          if-no-files-found: error
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm
+          path: out
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel with the shared wasm
+        run: |
+          cp out/codemode.wasm python/src/clicodemode/_codemode.wasm
+          python -m pip install build
+          (cd python && python -m build --outdir ../dist-py)
+          ls -l dist-py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist-py/*
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-py
+
+  npm:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: npm >= 11.5 (trusted publishing)
+        run: |
+          npm install -g npm@latest
+          npm --version
+      - name: Build the package with the shared wasm
+        working-directory: npm
+        run: |
+          npm ci
+          npm run build
+          mkdir -p dist
+          cp ../out/codemode-js.wasm dist/codemode.wasm
+          cp ../out/wasm_exec.js dist/wasm_exec.js
+          mkdir -p ../dist-npm
+          npm pack --pack-destination ../dist-npm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-dist
+          path: dist-npm/*
+      - name: Is this version already on npm?
+        id: exists
+        working-directory: npm
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if npm view "clicodemode@$v" version >/dev/null 2>&1; then
+            echo "clicodemode@$v is already on npm: skipping publish"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish with provenance
+        if: steps.exists.outputs.exists != 'true'
+        working-directory: npm
+        run: npm publish --provenance --access public
+
+  crates:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: crates
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm
+          path: out
+      - name: Package with the wasm inside the crate (must stay under 10 MB)
+        working-directory: rust
+        run: |
+          mkdir -p assets
+          cp ../out/codemode.wasm assets/codemode.wasm
+          cargo package --allow-dirty
+          ls -l target/package/*.crate
+          size=$(wc -c < target/package/clicodemode-*.crate)
+          [ "$size" -lt 10000000 ] || { echo "crate too large: $size"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crate
+          path: rust/target/package/*.crate
+      - name: Is this version already on crates.io?
+        id: exists
+        working-directory: rust
+        run: |
+          v=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' Cargo.toml | head -1)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'User-Agent: clicodemode-release' "https://crates.io/api/v1/crates/clicodemode/$v")
+          if [ "$code" = 200 ]; then
+            echo "clicodemode $v is already on crates.io: skipping publish"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: rust-lang/crates-io-auth-action@v1
+        if: steps.exists.outputs.exists != 'true'
+        id: auth
+      - name: Publish
+        if: steps.exists.outputs.exists != 'true'
+        working-directory: rust
+        run: cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+  github-release:
+    # Attach the artifacts even if a registry publish failed, so the release
+    # assets (the registry-free install URLs) always exist once the build passed.
+    needs: [build, pypi, npm, crates]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Checksums
+        working-directory: assets
+        run: |
+          ls -l
+          sha256sum * | tee SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: assets/*
+          generate_release_notes: true
+      - name: Fail the run if any publish failed (assets are attached either way)
+        if: ${{ !cancelled() }}
+        run: |
+          echo "pypi=${{ needs.pypi.result }} npm=${{ needs.npm.result }} crates=${{ needs.crates.result }}"
+          [ "${{ needs.pypi.result }}" = success ] && [ "${{ needs.npm.result }}" = success ] && [ "${{ needs.crates.result }}" = success ]

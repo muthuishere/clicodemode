@@ -111,18 +111,42 @@ type Promise struct {
 	state   int // 0 pending 1 fulfilled 2 rejected
 	value   Value
 	handled bool
+	// reactions run, in registration order, when the promise settles (see
+	// onSettle). They must be cheap and never block.
+	reactions []func()
 }
 
 func newPromise() *Promise { return &Promise{done: make(chan struct{})} }
 
 func (p *Promise) settle(state int, v Value) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.state != 0 {
+		p.mu.Unlock()
 		return
 	}
 	p.state, p.value = state, v
 	close(p.done)
+	rs := p.reactions
+	p.reactions = nil
+	p.mu.Unlock()
+	for _, f := range rs {
+		f()
+	}
+}
+
+// onSettle registers f to run when p settles, after every reaction
+// registered earlier; if p is already settled f runs now. Reactions are how
+// await continuations and .then jobs join the interpreter's single FIFO job
+// queue (see fifoLock) in the order JavaScript specifies.
+func (p *Promise) onSettle(f func()) {
+	p.mu.Lock()
+	if p.state != 0 {
+		p.mu.Unlock()
+		f()
+		return
+	}
+	p.reactions = append(p.reactions, f)
+	p.mu.Unlock()
 }
 
 // ---- conversions ----
@@ -172,18 +196,35 @@ func numberToString(f float64) string {
 	case f == math.Trunc(f) && math.Abs(f) < 1e21:
 		return strconv.FormatFloat(f, 'f', -1, 64)
 	}
-	s := strconv.FormatFloat(f, 'g', -1, 64)
-	if strings.Contains(s, "e") {
-		// JS style: 1e+21, 1.5e-7
-		mant, exp, _ := strings.Cut(s, "e")
-		if exp[0] != '-' && exp[0] != '+' {
-			exp = "+" + exp
-		}
-		sign := exp[:1]
-		digits := strings.TrimLeft(exp[1:], "0")
-		return mant + "e" + sign + digits
+	// Shortest round-trip digits, laid out as ECMAScript Number::toString:
+	// positional for 1e-6 <= |f| < 1e21, exponent form otherwise.
+	e := strconv.FormatFloat(f, 'e', -1, 64) // d.ddddde[+-]XX
+	neg := ""
+	if e[0] == '-' {
+		neg, e = "-", e[1:]
 	}
-	return s
+	mant, expS, _ := strings.Cut(e, "e")
+	exp, _ := strconv.Atoi(expS)
+	digits := strings.Replace(mant, ".", "", 1)
+	k := len(digits)
+	n := exp + 1 // decimal point position relative to digits
+	switch {
+	case k <= n && n <= 21:
+		return neg + digits + strings.Repeat("0", n-k)
+	case 0 < n && n <= 21:
+		return neg + digits[:n] + "." + digits[n:]
+	case -6 < n && n <= 0:
+		return neg + "0." + strings.Repeat("0", -n) + digits
+	}
+	sign := "+"
+	ae := n - 1
+	if ae < 0 {
+		sign, ae = "-", -ae
+	}
+	if k == 1 {
+		return neg + digits + "e" + sign + strconv.Itoa(ae)
+	}
+	return neg + digits[:1] + "." + digits[1:] + "e" + sign + strconv.Itoa(ae)
 }
 
 func toString(v Value) string {
@@ -426,12 +467,11 @@ func FromGo(v any) Value {
 	if err != nil {
 		return toString(fmt.Sprint(v))
 	}
-	var out any
-	d := json.NewDecoder(strings.NewReader(string(b)))
-	if err := d.Decode(&out); err != nil {
+	out, err := jsonParse(string(b))
+	if err != nil {
 		return fmt.Sprint(v)
 	}
-	return FromGo(out)
+	return out // structs keep their field order
 }
 
 // ToGo converts a JS value to plain Go data (nil, bool, float64, string,
@@ -587,6 +627,10 @@ func writeJSON(it *Interp, b *strings.Builder, v Value, indent, cur string, seen
 	}
 	return true, nil
 }
+
+// ParseJSON decodes JSON text into a JS value keeping object key order
+// (document order, with integer-like keys iterating first, as in JavaScript).
+func ParseJSON(b []byte) (Value, error) { return jsonParse(string(b)) }
 
 // jsonParse decodes JSON keeping object key order.
 func jsonParse(s string) (Value, error) {

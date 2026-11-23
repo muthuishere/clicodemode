@@ -38,14 +38,18 @@ type Config struct {
 // runs on its own goroutine, but only the goroutine holding the interpreter
 // lock executes JS. `await` and host operations release the lock, so host I/O
 // overlaps (Promise.all really runs operations in parallel) while JS code
-// itself never races. Differences from a browser event loop: callback order
-// between independent promises is not specified.
+// itself never races. The lock is a FIFO queue (fifoLock) and an await
+// continuation or .then job takes its place in that queue at the moment its
+// promise settles (or at once when it is already settled), so jobs run in the
+// order JavaScript specifies and the result does not depend on goroutine
+// scheduling. Order between host operations settling on their own goroutines
+// is by arrival.
 type Interp struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	cfg     Config
 	globals *Env
-	gil     sync.Mutex
+	gil     fifoLock
 	steps   atomic.Int64
 	tasks   sync.WaitGroup
 	sem     chan struct{}
@@ -327,26 +331,33 @@ func (r *Runner) release() {
 	}
 	r.it.gil.Unlock()
 }
-func (r *Runner) reacquire() { r.it.gil.Lock() }
 
 // Await waits for a value; non-promises return immediately.
 func (r *Runner) Await(v Value, at Node) (Value, error) {
 	p, ok := v.(*Promise)
 	if !ok {
-		// JS `await x` always yields once, even for plain values.
+		// JS `await x` always yields once, even for plain values: queue the
+		// continuation behind every job already waiting.
+		c := make(chan struct{})
+		r.it.gil.enqueue(c)
 		r.release()
-		r.reacquire()
+		<-c
 		return v, nil
 	}
 	p.mu.Lock()
 	p.handled = true
 	p.mu.Unlock()
+	c := make(chan struct{})
+	var once sync.Once
+	enq := func() { once.Do(func() { r.it.gil.enqueue(c) }) }
+	p.onSettle(enq) // joins the job queue when p settles
 	r.release()
 	select {
-	case <-p.done:
+	case <-c:
 	case <-r.it.ctx.Done():
+		enq()
+		<-c
 	}
-	r.reacquire()
 	select {
 	case <-p.done:
 	default:
@@ -1341,7 +1352,7 @@ func binaryOp(op string, l, r Value) (Value, error) {
 		_, ls := l.(string)
 		_, rs := r.(string)
 		if ls || rs || !isPrimitive(l) || !isPrimitive(r) {
-			return toString(l) + toString(r), nil
+			return concatStr(toString(l), toString(r)), nil
 		}
 		return num(toNumber(l) + toNumber(r)), nil
 	case "-":
@@ -1609,22 +1620,14 @@ func (it *Interp) resolveWith(p *Promise, v Value) {
 		p.settle(2, makeError("TypeError", "promise resolved with itself"))
 		return
 	}
-	select {
-	case <-inner.done:
-		p.settle(inner.state, inner.value)
-		return
-	default:
-	}
+	// Adopt inner's outcome when it settles. Anything waiting on p (await,
+	// .then, Promise.all) also watches the run context, so a cancelled run
+	// needs no extra goroutine here.
 	it.tasks.Add(1)
-	go func() {
+	inner.onSettle(func() {
 		defer it.tasks.Done()
-		select {
-		case <-inner.done:
-			p.settle(inner.state, inner.value)
-		case <-it.ctx.Done():
-			p.settle(2, makeError("Error", "cancelled"))
-		}
-	}()
+		p.settle(inner.state, inner.value)
+	})
 }
 
 // HostPromise runs fn on a goroutine (holding a concurrency slot, NOT the
@@ -1670,11 +1673,23 @@ func (it *Interp) then(p *Promise, onFul, onRej Value, depth int, file string) *
 	p.handled = true
 	p.mu.Unlock()
 	it.tasks.Add(1)
+	c := make(chan struct{})
+	var once sync.Once
+	enq := func() { once.Do(func() { it.gil.enqueue(c) }) }
+	p.onSettle(enq) // the job takes its place in the FIFO queue now
 	go func() {
 		defer it.tasks.Done()
 		select {
-		case <-p.done:
+		case <-c:
 		case <-it.ctx.Done():
+			enq()
+			<-c
+		}
+		// The job settles its result promise while it still owns the lock, so
+		// whatever that promise releases queues behind the jobs already
+		// waiting (FIFO), not behind whichever goroutine wakes first.
+		defer it.gil.Unlock()
+		if it.ctx.Err() != nil { // never run .catch/.then handlers after a fatal stop
 			out.settle(2, makeError("Error", "cancelled"))
 			return
 		}
@@ -1688,15 +1703,8 @@ func (it *Interp) then(p *Promise, onFul, onRej Value, depth int, file string) *
 			out.settle(p.state, p.value) // pass through
 			return
 		}
-		it.gil.Lock()
-		if it.ctx.Err() != nil { // never run .catch/.then handlers after a fatal stop
-			it.gil.Unlock()
-			out.settle(2, makeError("Error", "cancelled"))
-			return
-		}
 		r := &Runner{it: it, depth: depth, file: file}
 		v, err := r.Call(cb, p.value)
-		it.gil.Unlock()
 		if err != nil {
 			if t, ok := catchable(err); ok {
 				out.settle(2, t)
@@ -1715,4 +1723,45 @@ func (it *Interp) then(p *Promise, onFul, onRej Value, depth int, file string) *
 type ThrowStmt struct {
 	base
 	X Node
+}
+
+// fifoLock is the interpreter lock: a mutex that grants itself to waiters in
+// the order they joined the queue. enqueue lets a caller join the queue
+// before it starts waiting, which is how a promise reaction claims its place
+// at the moment the promise settles.
+type fifoLock struct {
+	mu   sync.Mutex
+	held bool
+	q    []chan struct{}
+}
+
+// enqueue adds c to the queue; c is closed when the caller owns the lock.
+func (l *fifoLock) enqueue(c chan struct{}) {
+	l.mu.Lock()
+	if !l.held && len(l.q) == 0 {
+		l.held = true
+		close(c)
+	} else {
+		l.q = append(l.q, c)
+	}
+	l.mu.Unlock()
+}
+
+func (l *fifoLock) Lock() {
+	c := make(chan struct{})
+	l.enqueue(c)
+	<-c
+}
+
+func (l *fifoLock) Unlock() {
+	l.mu.Lock()
+	if len(l.q) > 0 {
+		c := l.q[0]
+		l.q[0] = nil
+		l.q = l.q[1:]
+		close(c) // ownership passes straight to the next waiter
+	} else {
+		l.held = false
+	}
+	l.mu.Unlock()
 }

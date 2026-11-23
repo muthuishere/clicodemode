@@ -1,0 +1,602 @@
+[
+ {
+  "id": "cap3-valid-names",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "dotted lower-case names with digits, dashes and underscores register",
+  "mode": "register",
+  "ops": [
+   {
+    "name": "a",
+    "description": "d"
+   },
+   {
+    "name": "a.b",
+    "description": "d"
+   },
+   {
+    "name": "file.read_all",
+    "description": "d"
+   },
+   {
+    "name": "x1.y-2.z_3",
+    "description": "d"
+   },
+   {
+    "name": "v2",
+    "description": "d"
+   }
+  ],
+  "program": "",
+  "expect": {}
+ },
+ {
+  "id": "cap3-reject-uppercase",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "uppercase letters are rejected",
+  "mode": "register",
+  "ops": [
+   {
+    "name": "Bad.Name",
+    "description": "d"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "register_error": {
+    "op": "Bad.Name"
+   }
+  }
+ },
+ {
+  "id": "cap3-reject-empty-segment",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "empty segments are rejected",
+  "mode": "register",
+  "ops": [
+   {
+    "name": "x..y",
+    "description": "d"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "register_error": {
+    "op": "x..y"
+   }
+  }
+ },
+ {
+  "id": "cap3-reject-trailing-dot",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "a trailing dot is rejected",
+  "mode": "register",
+  "ops": [
+   {
+    "name": "a.",
+    "description": "d"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "register_error": {
+    "op": "a."
+   }
+  }
+ },
+ {
+  "id": "cap3-reject-leading-dot",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "a leading dot is rejected",
+  "mode": "register",
+  "ops": [
+   {
+    "name": ".a",
+    "description": "d"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "register_error": {
+    "op": ".a"
+   }
+  }
+ },
+ {
+  "id": "cap3-reject-space",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "whitespace is rejected",
+  "mode": "register",
+  "ops": [
+   {
+    "name": "a b",
+    "description": "d"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "register_error": {
+    "op": "a b"
+   }
+  }
+ },
+ {
+  "id": "cap3-reject-leading-digit",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "a segment must start with a letter",
+  "mode": "register",
+  "ops": [
+   {
+    "name": "a.1b",
+    "description": "d"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "register_error": {
+    "op": "a.1b"
+   }
+  }
+ },
+ {
+  "id": "cap3-reject-empty-name",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "an empty name is rejected",
+  "mode": "register",
+  "ops": [
+   {
+    "name": "",
+    "description": "d"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "register_error": {
+    "op": ""
+   }
+  }
+ },
+ {
+  "id": "cap3-reject-duplicate",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "registering a name twice is rejected at the second registration",
+  "mode": "register",
+  "ops": [
+   {
+    "name": "a.b",
+    "description": "d"
+   },
+   {
+    "name": "c.d",
+    "description": "d"
+   },
+   {
+    "name": "a.b",
+    "description": "d"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "register_error": {
+    "op": "a.b"
+   }
+  }
+ },
+ {
+  "id": "cap3-reject-missing-handler",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "an operation without a handler is rejected",
+  "mode": "register",
+  "ops": [
+   {
+    "name": "ok.one",
+    "description": "d"
+   },
+   {
+    "name": "no.handler",
+    "description": "d",
+    "no_handler": true
+   }
+  ],
+  "program": "",
+  "expect": {
+   "register_error": {
+    "op": "no.handler"
+   }
+  }
+ },
+ {
+  "id": "cap2-fingerprint-stable",
+  "spec": [
+   "CAP-2"
+  ],
+  "description": "identical registries have identical fingerprints",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "equal"
+  }
+ },
+ {
+  "id": "cap2-fingerprint-order-independent",
+  "spec": [
+   "CAP-2"
+  ],
+  "description": "registration order does not affect the fingerprint",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   },
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "equal"
+  }
+ },
+ {
+  "id": "cap2-fingerprint-op-added",
+  "spec": [
+   "CAP-2"
+  ],
+  "description": "adding an operation changes the fingerprint",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   },
+   {
+    "name": "c.three",
+    "description": "d"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "different"
+  }
+ },
+ {
+  "id": "cap2-fingerprint-op-removed",
+  "spec": [
+   "CAP-2"
+  ],
+  "description": "removing an operation changes the fingerprint",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "different"
+  }
+ },
+ {
+  "id": "cap2-fingerprint-description",
+  "spec": [
+   "CAP-2"
+  ],
+  "description": "changing a description changes the fingerprint",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "a.one",
+    "description": "changed",
+    "side_effects": "none",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "different"
+  }
+ },
+ {
+  "id": "cap2-fingerprint-side-effects",
+  "spec": [
+   "CAP-2"
+  ],
+  "description": "changing side_effects changes the fingerprint",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "local",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "different"
+  }
+ },
+ {
+  "id": "cap2-fingerprint-idempotent",
+  "spec": [
+   "CAP-2"
+  ],
+  "description": "changing idempotent changes the fingerprint",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": true
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "a.one",
+    "description": "d",
+    "side_effects": "none",
+    "idempotent": false
+   },
+   {
+    "name": "b.two",
+    "description": "d",
+    "side_effects": "external"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "different"
+  }
+ },
+ {
+  "id": "cap2-fingerprint-input-schema",
+  "spec": [
+   "CAP-2"
+  ],
+  "description": "changing an input schema changes the fingerprint",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a",
+    "description": "d",
+    "input_schema": {
+     "type": "object"
+    }
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "a",
+    "description": "d",
+    "input_schema": {
+     "type": "object",
+     "required": [
+      "x"
+     ]
+    }
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "different"
+  }
+ },
+ {
+  "id": "cap2-fingerprint-ignores-handler-result",
+  "spec": [
+   "CAP-2"
+  ],
+  "description": "stub results are not part of the public contract",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a",
+    "description": "d",
+    "returns": 1
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "a",
+    "description": "d",
+    "returns": 2
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "equal"
+  }
+ },
+ {
+  "id": "cap3-default-side-effect-local",
+  "spec": [
+   "CAP-2",
+   "CAP-3"
+  ],
+  "description": "side_effects defaults to local, so omitting it equals declaring local",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a",
+    "description": "d"
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "a",
+    "description": "d",
+    "side_effects": "local"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "equal"
+  }
+ },
+ {
+  "id": "cap3-default-differs-from-none",
+  "spec": [
+   "CAP-3"
+  ],
+  "description": "the default is not none",
+  "mode": "fingerprint",
+  "ops": [
+   {
+    "name": "a",
+    "description": "d"
+   }
+  ],
+  "ops_b": [
+   {
+    "name": "a",
+    "description": "d",
+    "side_effects": "none"
+   }
+  ],
+  "program": "",
+  "expect": {
+   "fingerprint": "different"
+  }
+ }
+]

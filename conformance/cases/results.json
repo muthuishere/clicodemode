@@ -1,0 +1,555 @@
+[
+ {
+  "id": "lang4-last-expression",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "result is the last top-level expression statement",
+  "program": "1\n2\n3",
+  "expect": {
+   "result": 3,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-last-expression-skips-declarations",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "declarations after the last expression do not replace it",
+  "program": "const a = 1\na + 1\nconst b = 5",
+  "expect": {
+   "result": 2,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-no-expression-is-null",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "a program with no expression statement yields undefined, serialised as null",
+  "program": "const a = 1",
+  "expect": {
+   "result": null,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-promise-awaited",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "a promise result is awaited",
+  "program": "1\n2\nPromise.resolve(3)",
+  "expect": {
+   "result": 3,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-pending-promise-awaited",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "a promise settling later is awaited",
+  "program": "sleep(5).then(() => \"late\")",
+  "expect": {
+   "result": "late",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-default-export-function",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "a default export function is called and awaited",
+  "program": "export default async function () { return 42 }",
+  "expect": {
+   "result": 42,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-default-export-called-without-args",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "the default export is called with no arguments",
+  "program": "export default function (a) { return a === undefined }",
+  "expect": {
+   "result": true,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-default-export-arrow",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "a default export arrow function is called",
+  "program": "const k = 5\nexport default async () => { await sleep(1); return k * 2 }",
+  "expect": {
+   "result": 10,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-default-export-value",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "a non-function default export is the result",
+  "program": "export default {answer: 42}",
+  "expect": {
+   "result": {
+    "answer": 42
+   },
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-default-export-wins-over-expression",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "a default export takes precedence over an earlier expression statement",
+  "program": "1 + 1\nexport default 7",
+  "expect": {
+   "result": 7,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-default-export-awaits-ops",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "the default export function may call operations",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "returns": 42
+   }
+  ],
+  "program": "export default async function main() { const n = await ops.math.add({a: 40, b: 2}); return {n} }",
+  "expect": {
+   "result": {
+    "n": 42
+   },
+   "calls": {
+    "math.add": 1
+   },
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-top-level-await",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "top-level await is allowed",
+  "program": "const v = await Promise.resolve(8); v * 2",
+  "expect": {
+   "result": 16,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang4-rejected-result-fails",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "a rejected promise as the result fails the run",
+  "program": "Promise.reject(Error(\"final\"))",
+  "expect": {
+   "error": {
+    "messageContains": "final"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lang4-default-export-throws",
+  "spec": [
+   "LANG-4"
+  ],
+  "description": "a default export function that throws fails the run",
+  "program": "export default function () { throw Error(\"in main\") }",
+  "expect": {
+   "error": {
+    "messageContains": "in main"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lang5-unhandled-rejection",
+  "spec": [
+   "LANG-5"
+  ],
+  "description": "a rejected promise nobody handled fails the run",
+  "program": "Promise.reject(Error(\"lost\")); 1",
+  "expect": {
+   "error": {
+    "messageContains": "unhandled promise rejection"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lang5-unhandled-rejection-names-reason",
+  "spec": [
+   "LANG-5"
+  ],
+  "description": "the failure names the rejection reason",
+  "program": "Promise.reject(Error(\"lost\")); 1",
+  "expect": {
+   "error": {
+    "messageContains": "lost"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lang5-handled-by-await",
+  "spec": [
+   "LANG-5"
+  ],
+  "description": "a rejection that is awaited in try/catch is handled",
+  "program": "const p = Promise.reject(Error(\"x\")); try { await p } catch (e) {} \"fine\"",
+  "expect": {
+   "result": "fine",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang5-handled-by-catch",
+  "spec": [
+   "LANG-5"
+  ],
+  "description": ".catch handles a rejection",
+  "program": "Promise.reject(1).catch(() => 0); \"fine\"",
+  "expect": {
+   "result": "fine",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang5-allsettled-handles",
+  "spec": [
+   "LANG-5"
+  ],
+  "description": "allSettled consumes rejections",
+  "program": "await Promise.allSettled([Promise.reject(1), Promise.reject(2)]); \"fine\"",
+  "expect": {
+   "result": "fine",
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang5-forgotten-await-op-failure",
+  "spec": [
+   "LANG-5",
+   "OP-5"
+  ],
+  "description": "forgetting to await a failing operation fails the run and names the operation error",
+  "ops": [
+   {
+    "name": "fail.always",
+    "description": "fails",
+    "throws": "disk on fire"
+   }
+  ],
+  "program": "call(\"fail.always\"); 1",
+  "expect": {
+   "error": {
+    "messageContains": "disk on fire"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "lang5-forgotten-await-op-success",
+  "spec": [
+   "LANG-5",
+   "OP-1"
+  ],
+  "description": "an un-awaited successful operation is harmless",
+  "ops": [
+   {
+    "name": "ok.op",
+    "description": "ok",
+    "returns": true
+   }
+  ],
+  "program": "call(\"ok.op\"); 1",
+  "expect": {
+   "result": 1,
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli10-input-object",
+  "spec": [
+   "CLI-10"
+  ],
+  "description": "the global input is the passed JSON value",
+  "input": {
+   "n": 20,
+   "items": [
+    1,
+    2
+   ]
+  },
+  "program": "input.n * 2 + input.items.length",
+  "expect": {
+   "result": 42,
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli10-input-defaults-null",
+  "spec": [
+   "CLI-10"
+  ],
+  "description": "input is null when none is given",
+  "program": "input === null",
+  "expect": {
+   "result": true,
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli10-input-array-and-scalars",
+  "spec": [
+   "CLI-10"
+  ],
+  "description": "input may be any JSON value",
+  "input": [
+   1,
+   2,
+   3
+  ],
+  "program": "input.map(x => x + 1)",
+  "expect": {
+   "result": [
+    2,
+    3,
+    4
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli10-input-string",
+  "spec": [
+   "CLI-10"
+  ],
+  "description": "a string input stays a string",
+  "input": "hi",
+  "program": "input + '!'",
+  "expect": {
+   "result": "hi!",
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli10-eval-input",
+  "spec": [
+   "CLI-10"
+  ],
+  "description": "eval receives input too",
+  "mode": "eval",
+  "input": {
+   "n": 21
+  },
+  "program": "input.n * 2",
+  "expect": {
+   "result": 42,
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli10-input-in-default-export",
+  "spec": [
+   "CLI-10"
+  ],
+  "description": "input is visible inside the default export",
+  "input": {
+   "v": "seen"
+  },
+  "program": "export default function () { return input.v }",
+  "expect": {
+   "result": "seen",
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli9-print-stdout",
+  "spec": [
+   "CLI-9"
+  ],
+  "description": "print and console.log write space-joined arguments and a newline to the engine stdout",
+  "program": "print(\"hi\", 1, true, null); console.log(\"x\"); 5",
+  "expect": {
+   "result": 5,
+   "stdout": "hi 1 true null\nx\n",
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli9-print-order",
+  "spec": [
+   "CLI-9"
+  ],
+  "description": "output order follows execution order across awaits",
+  "program": "print(\"a\"); await sleep(1); print(\"b\"); 1",
+  "expect": {
+   "result": 1,
+   "stdout": "a\nb\n",
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli9-print-not-in-result",
+  "spec": [
+   "CLI-9"
+  ],
+  "description": "printed text never becomes part of the result",
+  "program": "print(\"noise\"); \"value\"",
+  "expect": {
+   "result": "value",
+   "stdout": "noise\n",
+   "exit": 0
+  }
+ },
+ {
+  "id": "eval-expression",
+  "spec": [
+   "CLI-3"
+  ],
+  "description": "eval evaluates a single expression",
+  "mode": "eval",
+  "program": "[1, 2, 3].map(x => x * 2)",
+  "expect": {
+   "result": [
+    2,
+    4,
+    6
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "eval-calls-operations",
+  "spec": [
+   "CLI-3",
+   "OP-1"
+  ],
+  "description": "eval can call operations with await",
+  "mode": "eval",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "returns": 3
+   }
+  ],
+  "program": "await call(\"math.add\", {a: 1, b: 2})",
+  "expect": {
+   "result": 3,
+   "exit": 0
+  }
+ },
+ {
+  "id": "eval-runtime-error-exit-1",
+  "spec": [
+   "CLI-3"
+  ],
+  "description": "a runtime failure in eval is exit 1, not a diagnostic",
+  "mode": "eval",
+  "program": "null.x",
+  "expect": {
+   "error": {
+    "messageContains": "null"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "eval-unknown-op-diagnostic",
+  "spec": [
+   "CLI-3",
+   "OP-3"
+  ],
+  "description": "eval of an unknown literal operation is a diagnostic with a suggestion, nothing runs",
+  "mode": "eval",
+  "ops": [
+   {
+    "name": "math.add",
+    "description": "add",
+    "returns": 3
+   }
+  ],
+  "program": "await call(\"math.ad\", {a: 1, b: 2})",
+  "expect": {
+   "diagnostics": [
+    {
+     "severity": "error",
+     "line": 1,
+     "messageContains": "math.ad",
+     "hintContains": "math.add"
+    }
+   ],
+   "calls": {
+    "math.add": 0
+   },
+   "exit": 2
+  }
+ },
+ {
+  "id": "cli3-exit-classes-ok",
+  "spec": [
+   "CLI-3"
+  ],
+  "description": "success is exit 0",
+  "program": "1",
+  "expect": {
+   "result": 1,
+   "exit": 0
+  }
+ },
+ {
+  "id": "cli3-runtime-failure-is-1",
+  "spec": [
+   "CLI-3"
+  ],
+  "description": "the program ran and threw: exit 1",
+  "program": "throw Error(\"x\")",
+  "expect": {
+   "error": {
+    "messageContains": "x"
+   },
+   "exit": 1
+  }
+ },
+ {
+  "id": "cli3-runtime-error-line",
+  "spec": [
+   "CLI-3",
+   "CLI-5"
+  ],
+  "description": "runtime errors report the 1-based line they occurred on",
+  "program": "const o = {}\no.missing.x",
+  "expect": {
+   "error": {
+    "messageContains": "undefined",
+    "line": 2
+   },
+   "exit": 1
+  }
+ }
+]
