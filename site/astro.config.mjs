@@ -46,11 +46,12 @@ export default defineConfig({
 				{
 					label: 'Real examples',
 					items: [
-						{ label: 'aos', link: '/examples/aos/', badge: { text: 'open PR', variant: 'note' } },
-						{ label: 'ctx-optimize', link: '/examples/ctx-optimize/', badge: { text: 'open PR', variant: 'note' } },
+						{ label: 'aos', link: '/examples/aos/' },
+						{ label: 'ctx-optimize', link: '/examples/ctx-optimize/' },
 					],
 				},
 				{ label: 'JS subset and limitations', link: '/language/' },
+				{ label: 'Sessions (persistent REPL)', link: '/sessions/' },
 				{ label: 'Operations API', link: '/operations-api/' },
 				{ label: 'MCP adapter (optional)', link: '/mcp/' },
 				{ label: 'Workflows and WFNexus', link: '/workflows/' },

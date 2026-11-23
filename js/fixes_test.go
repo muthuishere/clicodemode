@@ -97,9 +97,9 @@ func TestUnsupportedEvalAndRegex(t *testing.T) {
 		{"eval call", `eval("1 + 1")`, "eval", 1, 1},
 		{"eval nested", "const x = 1;\nconst y = eval(x)", "eval", 2, 11},
 		{"eval bare", `const f = eval`, "eval", 1, 11},
-		{"regex const", `const r = /ab+c/`, "regex", 1, 11},
-		{"regex arg", `"a".replace(/a/g, "b")`, "regex", 1, 13},
-		{"regex assign op start", `let x; x = /=a/`, "regex", 1, 12},
+		{"regex lookahead", `const r = /a(?=b)/`, "lookahead", 1, 11},
+		{"regex backreference", `"aa".replace(/(a)\1/g, "b")`, "backreference", 1, 14},
+		{"regex bad flags", `let x; x = /=a/q`, "flags", 1, 12},
 	}
 	for _, c := range cases {
 		_, err := Parse(c.src, "t.js")

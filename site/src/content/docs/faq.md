@@ -44,7 +44,7 @@ Than one process per command run sequentially, yes (2x to 7.5x in our measuremen
 
 ## Why a JavaScript subset and not full JavaScript?
 
-Agents already write JavaScript well, and a small tree-walking interpreter in pure Go keeps the CLI a single static binary (+1.7 MB) with no runtime to boot. Leaving out `class`, `new`, `this`, regex and dynamic imports keeps programs short and checkable. Unsupported syntax is a parse error that names the construct.
+Agents already write JavaScript well, and a small tree-walking interpreter in pure Go keeps the CLI a single static binary (+1.7 MB) with no runtime to boot. It covers what models write (classes, `switch`, regexes on RE2, `Map`/`Set`/`Date`, tagged templates) and leaves out generators, `delete`, `eval` and dynamic imports, so programs stay checkable. Unsupported syntax is a parse error that names the construct.
 
 ## Do I have to rewrite my commands?
 

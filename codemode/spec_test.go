@@ -15,28 +15,39 @@ import (
 )
 
 var specCoverage = map[string]string{
-	"CAP-5":  "TestCapabilityCache* (cache_test.go)",
-	"OP-4":   "TestPolicyDenies",
-	"OP-5":   "TestArgumentValidationAndErrors, TestPanickingHandlerDoesNotCrashHost",
-	"OP-6":   "TestPromiseAllRunsHostCallsInParallel (js)",
-	"LANG-1": "TestLanguage, TestAsync (js)",
-	"LANG-3": "TestImportsAndJSONData, TestModules (js)",
-	"LANG-6": "TestLanguage/key_order (js)",
-	"LIM-1":  "TestBudgetsAndCancellation (js)",
-	"LIM-2":  "TestLimitsCannotBeSwallowedOnAsyncPaths (js), TestOperationLimitsCannotBeSwallowed",
-	"LIM-3":  "TestCancellationStopsRun, TestExecStreamFailureAndCancel",
-	"EXE-2":  "TestExecDeniedByDefault, TestShellWhenAuthorized",
-	"EXE-3":  "TestExecEnvIsMinimal, TestExecCwdConfined",
-	"EXE-4":  "TestExec",
-	"STR-1":  "TestStreams (js)",
-	"STR-2":  "TestExecStreamTakeKillsInfiniteProcess, TestExecStreamFailureAndCancel",
-	"STR-3":  "TestYAMLParallelKeepsOrderAndFirstError, TestStreamYAML (js)",
-	"WF-1":   "workflow validation tests (workflow_test.go)",
-	"WF-2":   "workflow DAG/continueOnError tests (workflow_test.go)",
-	"WF-3":   "workflow guard tests (workflow_test.go)",
-	"WF-4":   "workflow loop tests (workflow_test.go)",
-	"WF-6":   "TestWorkflowPlanRefsFromImports",
-	"MCP-2":  "adapters/mcp server_test.go",
+	"CAP-5":   "TestCapabilityCache* (cache_test.go)",
+	"OP-4":    "TestPolicyDenies",
+	"OP-5":    "TestArgumentValidationAndErrors, TestPanickingHandlerDoesNotCrashHost",
+	"OP-6":    "TestPromiseAllRunsHostCallsInParallel (js)",
+	"LANG-1":  "TestLanguage, TestAsync (js)",
+	"LANG-3":  "TestImportsAndJSONData, TestModules (js)",
+	"LANG-6":  "TestLanguage/key_order (js)",
+	"LANG-7":  "TestLangRegex (js), conformance lang2-regex-*",
+	"LANG-8":  "TestLangSwitch (js)",
+	"LANG-9":  "TestLangClass (js), conformance lang2-class-getter",
+	"LANG-10": "TestLangMapSetDate (js)",
+	"LANG-11": "TestLangTaggedTemplates (js)",
+	"LANG-12": "TestLangBuiltins (js)",
+	"SES-1":   "TestSessionPersistentScope",
+	"SES-2":   "TestSessionInputAndCheck",
+	"SES-3":   "TestSessionPerRunTimeoutAndCancel",
+	"SES-4":   "TestSessionDetachAndPoll",
+	"SES-5":   "TestSessionVarsResetClose",
+	"LIM-1":   "TestBudgetsAndCancellation (js)",
+	"LIM-2":   "TestLimitsCannotBeSwallowedOnAsyncPaths (js), TestOperationLimitsCannotBeSwallowed",
+	"LIM-3":   "TestCancellationStopsRun, TestExecStreamFailureAndCancel",
+	"EXE-2":   "TestExecDeniedByDefault, TestShellWhenAuthorized",
+	"EXE-3":   "TestExecEnvIsMinimal, TestExecCwdConfined",
+	"EXE-4":   "TestExec",
+	"STR-1":   "TestStreams (js)",
+	"STR-2":   "TestExecStreamTakeKillsInfiniteProcess, TestExecStreamFailureAndCancel",
+	"STR-3":   "TestYAMLParallelKeepsOrderAndFirstError, TestStreamYAML (js)",
+	"WF-1":    "workflow validation tests (workflow_test.go)",
+	"WF-2":    "workflow DAG/continueOnError tests (workflow_test.go)",
+	"WF-3":    "workflow guard tests (workflow_test.go)",
+	"WF-4":    "workflow loop tests (workflow_test.go)",
+	"WF-6":    "TestWorkflowPlanRefsFromImports",
+	"MCP-2":   "adapters/mcp server_test.go",
 }
 
 // Every requirement ID in SPEC.md is either tested here or listed above.
@@ -210,7 +221,7 @@ func TestSpec_CAP3(t *testing.T) {
 }
 
 func TestSpec_CAP4(t *testing.T) {
-	for _, src := range []string{"class A {}", "new X()", "this.x", "function* g() {}", "switch (1) {}", "delete o.x", "import('x')"} {
+	for _, src := range []string{"function* g() {}", "delete o.x", "import('x')", "eval('1')", "class A { get x() { return 1 } }", "/(?<=a)b/"} {
 		if _, diags := NewEngine(NewRegistry("v")).Compile(src, "p.js"); len(diags) == 0 {
 			t.Errorf("unsupported %q accepted", src)
 		}
@@ -244,8 +255,8 @@ func TestSpec_OP3(t *testing.T) {
 }
 
 func TestSpec_LANG2(t *testing.T) {
-	_, diags := NewEngine(NewRegistry("v")).Compile("class A {}", "p.js")
-	if len(diags) != 1 || !strings.Contains(diags[0].Message, "classes are not supported") {
+	_, diags := NewEngine(NewRegistry("v")).Compile("function* g() {}", "p.js")
+	if len(diags) != 1 || !strings.Contains(diags[0].Message, "generator functions are not supported") {
 		t.Fatalf("%v", diags)
 	}
 }

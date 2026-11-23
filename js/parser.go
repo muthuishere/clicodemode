@@ -20,6 +20,7 @@ func Parse(src, file string) (*Program, error) {
 		}
 		prog.Body = append(prog.Body, s)
 	}
+	markThis(prog)
 	return prog, nil
 }
 
@@ -40,6 +41,7 @@ func ParseExpression(src, file string) (Node, error) {
 	if !p.at(tEOF, "") {
 		return nil, p.errHere("unexpected %s after expression", p.desc())
 	}
+	markThis(e)
 	return e, nil
 }
 
@@ -118,11 +120,7 @@ func (p *parser) semicolon() error {
 }
 
 var unsupportedKw = map[string]string{
-	"class":  "classes are not supported; use plain objects and functions",
-	"new":    "`new` is not supported; use factory functions and literals",
-	"this":   "`this` is not supported; pass values explicitly",
 	"yield":  "generators are not supported",
-	"switch": "`switch` is not supported yet; use if/else",
 	"delete": "`delete` is not supported; build a new object instead",
 	"var":    "",
 }
@@ -134,6 +132,17 @@ func (p *parser) statement(top bool) (Node, error) {
 			return nil, p.errHere("%s", msg)
 		}
 		switch t.val {
+		case "class":
+			c, err := p.classExpr()
+			if err != nil {
+				return nil, err
+			}
+			if c.Name == "" {
+				return nil, p.errAt(t.pos, "a class declaration needs a name")
+			}
+			return &ClassStmt{base: base{t.pos}, Class: c}, nil
+		case "switch":
+			return p.switchStmt()
 		case "const", "let", "var":
 			d, err := p.varDecl(true)
 			if err != nil {
@@ -982,7 +991,7 @@ var binPrec = map[string]int{
 	"||": 2, "&&": 3,
 	"|": 4, "^": 5, "&": 6,
 	"==": 7, "!=": 7, "===": 7, "!==": 7,
-	"<": 8, ">": 8, "<=": 8, ">=": 8, "in": 8,
+	"<": 8, ">": 8, "<=": 8, ">=": 8, "in": 8, "instanceof": 8,
 	"<<": 9, ">>": 9, ">>>": 9,
 	"+": 10, "-": 10,
 	"*": 11, "/": 11, "%": 11,
@@ -991,7 +1000,7 @@ var binPrec = map[string]int{
 
 func (p *parser) binOp() (string, int, bool) {
 	t := p.cur()
-	if t.kind == tPunct || (t.kind == tKeyword && t.val == "in") {
+	if t.kind == tPunct || (t.kind == tKeyword && (t.val == "in" || t.val == "instanceof")) {
 		if pr, ok := binPrec[t.val]; ok {
 			return t.val, pr, true
 		}
@@ -1157,7 +1166,16 @@ func (p *parser) postfix() (Node, error) {
 			}
 			x = &Call{base: base{t.pos}, Callee: x, Args: args}
 		case t.kind == tTemplate:
-			return nil, p.errHere("tagged templates are not supported")
+			p.i++
+			tpl, err := p.templateLit(t)
+			if err != nil {
+				return nil, err
+			}
+			tl, ok := tpl.(*TemplateLit)
+			if !ok {
+				tl = &TemplateLit{base: base{t.pos}, Quasis: []string{tpl.(*StringLit).V}}
+			}
+			x = &TaggedTemplate{base: base{t.pos}, Tag: x, Tpl: tl}
 		default:
 			return x, nil
 		}
@@ -1204,6 +1222,12 @@ func (p *parser) primary() (Node, error) {
 	case tTemplate:
 		p.i++
 		return p.templateLit(t)
+	case tRegex:
+		p.i++
+		if _, err := compileRegex(t.val, t.flags); err != nil {
+			return nil, p.errAt(t.pos, "%v", err)
+		}
+		return &RegexLit{base: base{t.pos}, Source: t.val, Flags: t.flags}, nil
 	case tIdent:
 		if t.val == "eval" {
 			return nil, p.errHere("`eval` is not supported; nothing is evaluated from strings")
@@ -1230,6 +1254,19 @@ func (p *parser) primary() (Node, error) {
 			return &UndefLit{base{t.pos}}, nil
 		case "function":
 			return p.function(false)
+		case "this":
+			p.i++
+			return &Ident{base: base{t.pos}, Name: "this"}, nil
+		case "super":
+			p.i++
+			if !p.is("(") && !p.is(".") && !p.is("[") {
+				return nil, p.errAt(t.pos, "`super` must be followed by ( or .")
+			}
+			return &Super{base{t.pos}}, nil
+		case "class":
+			return p.classExpr()
+		case "new":
+			return p.newExpr()
 		case "import":
 			return nil, p.errHere("dynamic import() is not supported")
 		}
@@ -1385,7 +1422,7 @@ func (p *parser) objectLit() (Node, error) {
 
 func (p *parser) templateLit(t token) (Node, error) {
 	parts := strings.Split(t.val, "\x00")
-	n := &TemplateLit{base: base{t.pos}}
+	n := &TemplateLit{base: base{t.pos}, Raws: t.raws}
 	for k, part := range parts {
 		if k%2 == 0 {
 			n.Quasis = append(n.Quasis, strings.ReplaceAll(part, "␀", "\x00"))
@@ -1408,4 +1445,224 @@ func (p *parser) templateLit(t token) (Node, error) {
 		n.Exprs = append(n.Exprs, x)
 	}
 	return n, nil
+}
+
+func (p *parser) switchStmt() (Node, error) {
+	t := p.cur()
+	p.i++
+	if _, err := p.expect("("); err != nil {
+		return nil, err
+	}
+	disc, err := p.expression()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(")"); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect("{"); err != nil {
+		return nil, err
+	}
+	sw := &Switch{base: base{t.pos}, Disc: disc}
+	seenDefault := false
+	for !p.is("}") {
+		var c SwitchCase
+		switch {
+		case p.isKw("case"):
+			p.i++
+			if c.Test, err = p.expression(); err != nil {
+				return nil, err
+			}
+		case p.isKw("default"):
+			if seenDefault {
+				return nil, p.errHere("more than one default clause in switch")
+			}
+			seenDefault = true
+			p.i++
+		default:
+			return nil, p.errHere("expected `case` or `default` in switch but found %s", p.desc())
+		}
+		if _, err := p.expect(":"); err != nil {
+			return nil, err
+		}
+		for !p.isKw("case") && !p.isKw("default") && !p.is("}") {
+			if p.at(tEOF, "") {
+				return nil, p.errAt(t.pos, "unclosed switch")
+			}
+			s, err := p.statement(false)
+			if err != nil {
+				return nil, err
+			}
+			if s != nil {
+				c.Body = append(c.Body, s)
+			}
+		}
+		sw.Cases = append(sw.Cases, c)
+	}
+	p.i++
+	return sw, nil
+}
+
+// newExpr parses new Callee(args); the callee is a member chain without calls.
+func (p *parser) newExpr() (Node, error) {
+	t := p.cur()
+	p.i++
+	x, err := p.primary()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		mt := p.cur()
+		if p.is(".") {
+			p.i++
+			name, err := p.propertyName()
+			if err != nil {
+				return nil, err
+			}
+			x = &Member{base: base{mt.pos}, Obj: x, Name: name}
+			continue
+		}
+		if p.is("[") {
+			p.i++
+			k, err := p.expression()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect("]"); err != nil {
+				return nil, err
+			}
+			x = &Member{base: base{mt.pos}, Obj: x, Computed: k}
+			continue
+		}
+		break
+	}
+	n := &NewExpr{base: base{t.pos}, Callee: x}
+	if p.is("(") {
+		if n.Args, err = p.args(); err != nil {
+			return nil, err
+		}
+	}
+	return n, nil
+}
+
+func (p *parser) classExpr() (*ClassExpr, error) {
+	t := p.cur()
+	p.i++
+	c := &ClassExpr{base: base{t.pos}}
+	if p.cur().kind == tIdent && !p.isCtx("extends") {
+		c.Name = p.cur().val
+		p.i++
+	}
+	if p.isCtx("extends") {
+		p.i++
+		sup, err := p.postfix()
+		if err != nil {
+			return nil, err
+		}
+		c.Super = sup
+	}
+	if _, err := p.expect("{"); err != nil {
+		return nil, err
+	}
+	for !p.is("}") {
+		if p.at(tEOF, "") {
+			return nil, p.errAt(t.pos, "unclosed class body")
+		}
+		if p.is(";") {
+			p.i++
+			continue
+		}
+		m := ClassMember{}
+		next := p.peekTok(1)
+		if p.isCtx("static") && !(next.kind == tPunct && (next.val == "(" || next.val == "=")) {
+			m.Static = true
+			p.i++
+			next = p.peekTok(1)
+		}
+		async := false
+		if p.isCtx("async") && !(next.kind == tPunct && (next.val == "(" || next.val == "=")) && !next.nlBefore {
+			async = true
+			p.i++
+		}
+		if p.is("*") {
+			return nil, p.errHere("generator methods are not supported")
+		}
+		if p.is("#") || (p.cur().kind == tIdent && (p.cur().val == "get" || p.cur().val == "set") && p.peekTok(1).kind == tIdent) {
+			return nil, p.errHere("getters, setters and private (#) members are not supported in classes; use methods and plain fields")
+		}
+		kt := p.cur()
+		name, err := p.propertyName()
+		if err != nil {
+			return nil, err
+		}
+		m.Name = name
+		if p.is("(") {
+			params, err := p.paramList()
+			if err != nil {
+				return nil, err
+			}
+			body, err := p.funcBody(async)
+			if err != nil {
+				return nil, err
+			}
+			m.Kind = "method"
+			if name == "constructor" && !m.Static {
+				if async {
+					return nil, p.errAt(kt.pos, "a class constructor cannot be async")
+				}
+				m.Kind = "constructor"
+			}
+			m.Fn = &Func{base: base{kt.pos}, Name: name, Params: params, Body: body, Async: async, UsesThis: true}
+		} else {
+			if async {
+				return nil, p.errAt(kt.pos, "unexpected async field")
+			}
+			m.Kind = "field"
+			if p.is("=") {
+				p.i++
+				if m.Value, err = p.assignment(); err != nil {
+					return nil, err
+				}
+			}
+			if err := p.semicolon(); err != nil {
+				return nil, err
+			}
+		}
+		c.Members = append(c.Members, m)
+	}
+	p.i++
+	return c, nil
+}
+
+// markThis sets Func.UsesThis on every non-arrow function whose body (not
+// counting nested non-arrow functions) reads this or super, so calls of all
+// other functions skip binding `this`.
+func markThis(root Node) {
+	Walk(root, func(n Node) {
+		f, ok := n.(*Func)
+		if !ok || f.Arrow || f.UsesThis {
+			return
+		}
+		found := false
+		visit := func(x Node) bool {
+			if found {
+				return false
+			}
+			switch y := x.(type) {
+			case *Ident:
+				if y.Name == "this" {
+					found = true
+				}
+			case *Super:
+				found = true
+			case *Func:
+				return y == f || y.Arrow
+			case *ClassExpr:
+				return false
+			}
+			return true
+		}
+		walkPrune(f, visit)
+		f.UsesThis = found
+	})
 }

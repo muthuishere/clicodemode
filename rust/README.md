@@ -117,7 +117,7 @@ JavaScript); without the feature it iterates as `1,a,b`.
 | Timeouts | `RunOptions::timeout` / `Limits::timeout_ms` stop an infinite loop in the program. They cannot interrupt a handler that is already running: a timeout is noticed once the handler returns, and a handler's side effects still happen. |
 | Imports | None: there is no filesystem inside the engine. Programs are single files. |
 | `exec` / `execStream` / `shell` | Denied (no process access in WASI). Calls fail with "not permitted". Expose what you need as operations. |
-| Language | No `class`, `new`, `this`, generators, `switch`, `delete`, regex, dynamic `import()` or `eval`. `check` reports them with file:line:col. |
+| Language | No generators, `delete`, class getters/setters, regex lookaround or backreferences, dynamic `import()` or `eval`. `check` reports them with file:line:col. |
 | Registering after first use | Restarts the engine (about 6 to 8 ms warm), so register everything up front. |
 | Speed | The program is interpreted twice (JS in Go in wasm in wasmi): about 50x slower than native Go on pure-CPU loops. Measured on an Apple M-series laptop, release build: a 100,000-iteration loop takes 0.4 to 0.5 s. Operations run natively and dominate real programs. |
 | Cold start | Measured, release build: first engine in a process 47 to 56 ms (compiles the wasm module once); each further engine 6 to 8 ms; a warm `eval` about 0.5 ms. |

@@ -161,9 +161,11 @@ one read.
 
 A JavaScript subset: `const`/`let`, functions and arrows, destructuring,
 spread, template literals, `async`/`await`, `Promise.all`, `try`/`catch`,
-loops, `pmap` for bounded parallel maps. Not supported (a check error, never
-silent): `class`, `new`, `this`, generators, `switch`, regex, `eval`, dynamic
-`import()`. Full spec: [SPEC.md](https://github.com/muthuishere/clicodemode/blob/main/docs/SPEC.md).
+loops, `switch`, classes with `new`/`this`/`extends`, regexes (RE2, so no
+catastrophic backtracking), tagged templates, `Map`/`Set`/`Date`, `pmap` for
+bounded parallel maps. Not supported (a check error, never silent):
+generators, `delete`, getters/setters, regex lookaround and backreferences,
+`eval`, dynamic `import()`. Full spec: [SPEC.md](https://github.com/muthuishere/clicodemode/blob/main/docs/SPEC.md).
 
 ## Security
 
@@ -178,7 +180,7 @@ silent): `class`, `new`, `this`, generators, `switch`, regex, `eval`, dynamic
 The engine is the Go library [clicodemode](https://github.com/muthuishere/clicodemode)
 compiled to WebAssembly; this package loads it and passes your handlers in.
 Go is the primary implementation; the Node package is **experimental** and
-follows the same version (0.6.2). The `.wasm` is about 2.1 MB gzipped; a cold
+follows the same version (0.7.0). The `.wasm` is about 2.1 MB gzipped; a cold
 start (load plus one run) takes about 55 ms on Apple Silicon with Node 24.
 Node 20 or newer.
 

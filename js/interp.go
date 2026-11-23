@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,6 +34,86 @@ type Config struct {
 	Limits Limits
 	Stdout io.Writer
 	Loader ModuleLoader
+	// Shared, when set, makes this interpreter one run of a session: it uses
+	// the session's interpreter lock, globals and persistent top-level scope.
+	Shared *Shared
+}
+
+// Shared is the state a session keeps across runs: one interpreter lock (so
+// JS from different runs never races), one set of globals and one top-level
+// scope whose declarations carry over from run to run. Each run still gets
+// its own Interp, so its context, limits, background tasks and unhandled
+// rejections belong to that run only.
+type Shared struct {
+	gil     *fifoLock
+	globals *Env
+	scope   *Env
+	once    sync.Once
+	claimMu sync.Mutex
+	claimed map[string]bool
+}
+
+// NewShared returns empty session state.
+func NewShared() *Shared {
+	sh := &Shared{gil: &fifoLock{}, globals: newEnv(nil), claimed: map[string]bool{}}
+	sh.scope = newEnv(sh.globals)
+	sh.scope.session = true
+	return sh
+}
+
+// Claim reports true the first time it is called with key, so a host
+// installs session-wide globals (operations, exec, workflow) once.
+func (sh *Shared) Claim(key string) bool {
+	sh.claimMu.Lock()
+	defer sh.claimMu.Unlock()
+	if sh.claimed[key] {
+		return false
+	}
+	sh.claimed[key] = true
+	return true
+}
+
+// InputRef is the value a host defines as the global `input` in a session:
+// reading it yields the input of the run whose code is executing (see
+// Interp.SetInput), so a detached run keeps seeing its own input.
+var InputRef Value = inputRefT{}
+
+type inputRefT struct{}
+
+// SetInput sets the value InputRef resolves to for this run.
+func (it *Interp) SetInput(v Value) { it.input = v }
+
+// Lock runs fn while holding the session's interpreter lock, so it can read
+// or change the persistent scope safely.
+func (sh *Shared) Lock(fn func()) {
+	sh.gil.Lock()
+	defer sh.gil.Unlock()
+	fn()
+}
+
+// Binding is one persistent top-level name.
+type Binding struct {
+	Name  string
+	Kind  string // let, const, var, function
+	Value Value
+}
+
+// Bindings lists the persistent top-level names, sorted by name. Call it
+// inside Lock.
+func (sh *Shared) Bindings() []Binding {
+	out := make([]Binding, 0, len(sh.scope.vars))
+	for n, b := range sh.scope.vars {
+		out = append(out, Binding{Name: n, Kind: b.kind, Value: b.v})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Reset drops every persistent top-level binding. Call it inside Lock.
+func (sh *Shared) Reset() {
+	sh.scope = newEnv(sh.globals)
+	sh.scope.session = true
+	declGen.Add(1)
 }
 
 // Interp runs programs. One Interp runs one program at a time.
@@ -52,13 +133,15 @@ type Interp struct {
 	cancel  context.CancelFunc
 	cfg     Config
 	globals *Env
-	gil     fifoLock
+	gil     *fifoLock
 	steps   atomic.Int64
 	ops     atomic.Int64
 	tasks   sync.WaitGroup
 	sem     chan struct{}
 	modules map[string]*module
 	modMu   sync.Mutex
+	input   Value           // session runs: what InputRef resolves to
+	topDecl map[string]bool // session runs: names this run declared at top level
 
 	fatalMu  sync.Mutex
 	fatal    error // first limit/cancel error; ends the run, never catchable
@@ -169,9 +252,15 @@ func New(ctx context.Context, cfg Config) *Interp {
 	}
 	it := &Interp{
 		ctx: ctx, cancel: cancel, cfg: cfg,
+		gil:     &fifoLock{},
 		globals: newEnv(nil),
 		sem:     make(chan struct{}, cfg.Limits.MaxConcurrency),
 		modules: map[string]*module{},
+	}
+	if sh := cfg.Shared; sh != nil {
+		it.gil, it.globals = sh.gil, sh.globals
+		sh.once.Do(func() { installGlobals(it) })
+		return it
 	}
 	installGlobals(it)
 	return it
@@ -184,7 +273,13 @@ func (it *Interp) Context() context.Context { return it.ctx }
 func (it *Interp) Close() { it.cancel() }
 
 // Define adds a global binding (read-only to the program).
-func (it *Interp) Define(name string, v Value) { it.globals.declare(name, v, "const") }
+func (it *Interp) Define(name string, v Value) {
+	if it.cfg.Shared != nil { // globals are shared with runs still in flight
+		it.gil.Lock()
+		defer it.gil.Unlock()
+	}
+	it.globals.declare(name, v, "const")
+}
 
 // Acquire takes a host-concurrency slot; release it with the returned func.
 func (it *Interp) Acquire() (func(), error) {
@@ -205,8 +300,9 @@ type binding struct {
 
 // Env is a lexical scope.
 type Env struct {
-	vars   map[string]*binding
-	parent *Env
+	vars    map[string]*binding
+	parent  *Env
+	session bool // a session's persistent top-level scope
 }
 
 func newEnv(parent *Env) *Env { return &Env{parent: parent} } // vars allocated on first declare
@@ -442,6 +538,47 @@ func (it *Interp) Run(prog *Program, file string) (Value, error) {
 	return res, nil
 }
 
+// RunTop runs a program in the session's persistent top-level scope (see
+// Shared) and returns once the top level and its result have finished. Unlike
+// Run it does not wait for background work (unawaited async calls, .then
+// callbacks); call Wait for that. Without Shared it uses a fresh scope.
+func (it *Interp) RunTop(prog *Program, file string) (Value, error) {
+	it.gil.Lock()
+	r := &Runner{it: it, file: file}
+	var env *Env
+	if sh := it.cfg.Shared; sh != nil {
+		env = sh.scope
+		it.topDecl = map[string]bool{}
+	}
+	res, exports, err := r.runModuleIn(prog, file, env)
+	if err == nil {
+		if d, ok := exports.Get("default"); ok {
+			res = d
+		}
+		res, err = r.Await(res, prog)
+	}
+	it.gil.Unlock()
+	if f := it.fatalErr(); f != nil {
+		return nil, f
+	}
+	if err == nil && it.ctx.Err() != nil {
+		err = it.stopErr(prog, file)
+	}
+	return res, err
+}
+
+// Wait waits for the background work of a RunTop and reports a fatal error
+// or an unhandled rejection, as Run does at its end.
+func (it *Interp) Wait(prog *Program, file string) error { return it.finish(prog, file, nil) }
+
+// Locked runs fn holding the interpreter lock, without draining background
+// work (unlike WithLock). Use it to read JS values safely.
+func (it *Interp) Locked(fn func()) {
+	it.gil.Lock()
+	defer it.gil.Unlock()
+	fn()
+}
+
 // Eval evaluates a single expression in the global scope.
 func (it *Interp) Eval(x Node, file string) (Value, error) {
 	prog := &Program{base: base{x.P()}, Body: []Node{&ExprStmt{base{x.P()}, x}}}
@@ -449,7 +586,13 @@ func (it *Interp) Eval(x Node, file string) (Value, error) {
 }
 
 func (r *Runner) runModule(prog *Program, file string) (Value, *Object, error) {
-	env := newEnv(r.it.globals)
+	return r.runModuleIn(prog, file, nil)
+}
+
+func (r *Runner) runModuleIn(prog *Program, file string, env *Env) (Value, *Object, error) {
+	if env == nil {
+		env = newEnv(r.it.globals)
+	}
 	exports := NewObject()
 	// Static imports are resolved before the body runs.
 	for _, s := range prog.Body {
@@ -829,6 +972,14 @@ func (r *Runner) exec(s Node, env *Env) (ctrl, string, Value, error) {
 			}
 		}
 		return cNormal, "", nil, nil
+	case *Switch:
+		return r.execSwitch(n, env)
+	case *ClassStmt:
+		cls, err := r.evalClass(n.Class, env)
+		if err != nil {
+			return 0, "", nil, err
+		}
+		return cNormal, "", nil, r.bindPattern(&Ident{base: n.base, Name: n.Class.Name}, cls, env, "let")
 	case *Break:
 		return cBreak, n.Label, nil, nil
 	case *Continue:
@@ -916,6 +1067,10 @@ func (r *Runner) iterate(v Value, at Node) ([]Value, error) {
 			out = append(out, string(ch))
 		}
 		return out, nil
+	case *MapV:
+		return mapEntries(c), nil
+	case *SetV:
+		return append([]Value(nil), c.m.keys...), nil
 	}
 	return nil, r.throwAt(at, "TypeError", "%s is not iterable", typeOf(v))
 }
@@ -925,7 +1080,14 @@ func (r *Runner) iterate(v Value, at Node) ([]Value, error) {
 func (r *Runner) bindPattern(target Node, v Value, env *Env, kind string) error {
 	switch t := target.(type) {
 	case *Ident:
-		if b, ok := env.vars[t.Name]; ok && kind != "var" && b.kind != "var" && b.kind != "function" {
+		b, exists := env.vars[t.Name]
+		if env.session && r.it.topDecl != nil {
+			// REPL rule: a name from an earlier run may be declared again,
+			// but one run may not declare a name twice.
+			exists = exists && r.it.topDecl[t.Name]
+			r.it.topDecl[t.Name] = true
+		}
+		if exists && kind != "var" && b.kind != "var" && b.kind != "function" {
 			return r.throwAt(t, "SyntaxError", "identifier %q has already been declared", t.Name)
 		}
 		env.declare(t.Name, v, kind)
@@ -1137,6 +1299,9 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 		if !ok {
 			return nil, r.throwAt(n, "ReferenceError", "%s is not defined", n.Name)
 		}
+		if _, ok := b.v.(inputRefT); ok {
+			return r.it.input, nil
+		}
 		return b.v, nil
 	case *ArrayLit:
 		a := &Array{Elems: make([]Value, 0, len(n.Elems))}
@@ -1312,6 +1477,10 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 	case *Assign:
 		return r.evalAssign(n, env)
 	case *Member:
+		if _, ok := n.Obj.(*Super); ok {
+			fn, _, err := r.superMember(n, env)
+			return fn, err
+		}
 		obj, err := r.evalInner(n.Obj, env)
 		if err != nil {
 			return nil, err
@@ -1326,6 +1495,35 @@ func (r *Runner) evalInner(x Node, env *Env) (Value, error) {
 		return r.getMember(obj, key, n)
 	case *Call:
 		return r.evalCallInner(n, env)
+	case *NewExpr:
+		if err := r.tick(n); err != nil {
+			return nil, err
+		}
+		c, err := r.eval(n.Callee, env)
+		if err != nil {
+			return nil, err
+		}
+		args, err := r.evalArgs(n.Args, env)
+		if err != nil {
+			return nil, err
+		}
+		v, err := r.construct(c, args, n)
+		if err != nil {
+			return nil, r.positioned(n, err)
+		}
+		return v, nil
+	case *ClassExpr:
+		return r.evalClass(n, env)
+	case *TaggedTemplate:
+		return r.evalTagged(n, env)
+	case *RegexLit:
+		re, err := compileRegex(n.Source, n.Flags)
+		if err != nil {
+			return nil, r.throwAt(n, "SyntaxError", "%v", err)
+		}
+		return re, nil
+	case *Super:
+		return nil, r.throwAt(n, "SyntaxError", "`super` must be followed by ( or .")
 	case *Await:
 		v, err := r.eval(n.X, env)
 		if err != nil {
@@ -1477,6 +1675,8 @@ func binaryOp(op string, l, r Value) (Value, error) {
 		return float64(toInt32(l) >> (toUint32(r) & 31)), nil
 	case ">>>":
 		return float64(toUint32(l) >> (toUint32(r) & 31)), nil
+	case "instanceof":
+		return instanceOf(l, r)
 	case "in":
 		switch o := r.(type) {
 		case *Object:
@@ -1502,7 +1702,15 @@ func (r *Runner) evalCallInner(n *Call, env *Env) (Value, error) {
 		return nil, err
 	}
 	var fn, this Value = nil, Undefined
-	if m, ok := n.Callee.(*Member); ok {
+	if _, ok := n.Callee.(*Super); ok {
+		return r.superCall(n, env)
+	}
+	if m, ok := n.Callee.(*Member); ok && isSuper(m.Obj) {
+		var err error
+		if fn, this, err = r.superMember(m, env); err != nil {
+			return nil, err
+		}
+	} else if m, ok := n.Callee.(*Member); ok {
 		obj, err := r.evalInner(m.Obj, env)
 		if err != nil {
 			return nil, err
@@ -1550,8 +1758,10 @@ func (r *Runner) evalCallInner(n *Call, env *Env) (Value, error) {
 		}
 		args = append(args, v)
 	}
-	switch fn.(type) {
+	switch c := fn.(type) {
 	case *Function, *Builtin:
+	case *Class:
+		return nil, r.throwAt(n, "TypeError", "class %s cannot be called without `new`", c.Name)
 	default:
 		return nil, r.throwAt(n, "TypeError", "%s is not a function", describeCallee(n.Callee))
 	}
@@ -1604,20 +1814,26 @@ func (r *Runner) CallWithThis(fn, this Value, args []Value) (Value, error) {
 			return nil, &Error{Kind: "runtime", Pos: f.Decl.P(), File: r.file, Msg: fmt.Sprintf("maximum call depth %d exceeded", r.it.cfg.Limits.MaxCallDepth)}
 		}
 		if f.Decl.Async {
-			return r.startAsync(f, args), nil
+			return r.startAsync(f, this, args), nil
 		}
 		// Sync calls reuse this goroutine's runner (no allocation per call).
 		depth, file := r.depth, r.file
 		r.depth, r.file = depth+1, f.File
-		v, err := r.callBody(f, args)
+		v, err := r.callBody(f, this, args)
 		r.depth, r.file = depth, file
 		return v, err
 	}
 	return nil, r.it.typeError(fmt.Sprintf("%s is not a function", typeOf(fn)))
 }
 
-func (r *Runner) callBody(f *Function, args []Value) (Value, error) {
+func (r *Runner) callBody(f *Function, this Value, args []Value) (Value, error) {
 	env := newEnv(f.Env)
+	if f.Decl.UsesThis {
+		env.declare("this", this, "const")
+		if f.Home != nil {
+			env.declare("%home", f.Home, "const")
+		}
+	}
 	for i, p := range f.Decl.Params {
 		if p.Rest {
 			rest := &Array{}
@@ -1656,14 +1872,14 @@ func (r *Runner) callBody(f *Function, args []Value) (Value, error) {
 // startAsync runs an async function on its own goroutine. The caller blocks
 // until the callee first suspends or finishes, matching JS's "runs
 // synchronously until the first await".
-func (r *Runner) startAsync(f *Function, args []Value) *Promise {
+func (r *Runner) startAsync(f *Function, this Value, args []Value) *Promise {
 	p := r.it.newPromise()
 	yield := make(chan struct{})
 	r.it.tasks.Add(1)
 	go func() {
 		defer r.it.tasks.Done()
 		child := &Runner{it: r.it, depth: r.depth + 1, file: f.File, yield: yield}
-		v, err := child.callBody(f, args)
+		v, err := child.callBody(f, this, args)
 		if err != nil {
 			if t, ok := catchable(err); ok {
 				p.settle(2, t)

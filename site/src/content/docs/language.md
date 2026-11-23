@@ -7,22 +7,58 @@ Programs are small JavaScript-like modules run by a pure-Go tree-walking interpr
 
 ## Supported
 
-const/let, numbers, strings, template literals, booleans, null/undefined, arrays, objects, destructuring, spread and rest, all arithmetic, comparison and logical operators including `??`, `?.` and `**`, if/else, ternary, for, for-of, for-in, while, do-while, break/continue, functions, arrow functions, closures, default and rest parameters, try/catch/finally/throw, async/await, `Promise.resolve/reject/all/allSettled/race/any`, `.then/.catch/.finally`, and static `import`/`export` of relative `.js` modules and `.json` data files.
+const/let, numbers, strings, template literals, booleans, null/undefined, arrays, objects, destructuring, spread and rest, all arithmetic, comparison and logical operators including `??`, `?.` and `**`, if/else, ternary, for, for-of, for-in, while, do-while, break/continue, functions, arrow functions, closures, default and rest parameters, try/catch/finally/throw, async/await, `Promise.resolve/reject/all/allSettled/race/any`, `.then/.catch/.finally`, `switch`, classes (constructor, methods, fields, `static`, `extends`, `super`), `new`, `instanceof`, `this` in methods, regex literals and `RegExp`, tagged templates, `Map`, `Set`, `Date`, and static `import`/`export` of relative `.js` modules and `.json` data files.
+
+### Regular expressions
+
+Regexes run on Go's RE2 engine, so matching time is linear in the input and a pattern cannot backtrack catastrophically. `test`, `exec`, `match`, `matchAll`, `replace`, `replaceAll`, `split` and `search` accept a regex, with flags `g i m s y`, numbered and named groups, `$1`/`$<name>`/`$&` replacements and function replacers. Lookahead, lookbehind and backreferences are check errors:
+
+```sh
+$ democli code check - <<<'const r = /a(?=b)/'
+<stdin>:1:11: error: syntax error: invalid regex /a(?=b)/: lookahead and lookbehind are not supported (regexes run on RE2)
+```
+
+### Classes
+
+```js
+class Repo {
+  branch = "main"
+  constructor(path) { this.path = path }
+  async status() { return ops.repo.status({ path: this.path }) }
+  static at(path) { return new Repo(path) }
+}
+class NotFound extends Error {
+  constructor(what) { super(`${what} not found`); this.name = "NotFound" }
+}
+```
+
+Getters, setters and `#private` members are check errors; use methods and plain fields.
+
+### Tagged templates
+
+A tag is called with `(strings, ...values)`; values are passed separately and never spliced into the strings, so a host can define its own quoting tag:
+
+```js
+const q = (s, ...v) => s.reduce((out, part, i) => out + part + (i < v.length ? JSON.stringify(v[i]) : ""), "")
+q`branch ${input.ref}`
+```
+
+### Results
+
+A `Map` in a run result becomes an object, a `Set` an array and a `Date` an ISO string. Inside the program, `JSON.stringify` follows JavaScript (`{}` for a Map, ISO for a Date).
 
 ## Not supported
 
-`class`, `new`, `this`, generators, `switch`, `delete`, regular expressions, dynamic `import()`, `eval`, `require`, npm packages, Node or browser APIs. Also not yet: labelled statements, getters/setters, live module bindings, exact microtask ordering.
+Generators, `delete`, class getters/setters and `#private` members, regex lookaround and backreferences, dynamic `import()`, `eval`, `require`, npm packages, Node or browser APIs. Also not yet: labelled statements, live module bindings, exact microtask ordering.
 
 ```sh
-$ democli code eval 'new Error("x")'
-<eval>:1:1: error: syntax error: `new` is not supported; use factory functions and literals
+$ democli code eval 'delete input.x'
+<eval>:1:1: error: syntax error: `delete` is not supported; build a new object instead
 ```
-
-`Error(msg)` works without `new`.
 
 ## Globals
 
-`call`, `ops`, `input`, `workflow`, `step`, `print`, `console.log`, `JSON`, `Math`, `Object`, `Array.isArray`, `Array.from`, `String`, `Number`, `Boolean`, `parseInt`, `parseFloat`, `isNaN`, `sleep(ms)`, `pmap(items, fn, {concurrency})`, `Error(msg)`. Where the host permits: `exec`, `execStream`, `shell`, `stream`.
+`call`, `ops`, `input`, `workflow`, `step`, `print`, `console.log`, `JSON`, `Math`, `Object`, `Array`, `String`, `Number`, `Boolean`, `parseInt`, `parseFloat`, `isNaN`, `sleep(ms)`, `pmap(items, fn, {concurrency})`, `Promise`, `Map`, `Set`, `Date`, `RegExp`, `Error`/`TypeError`/`RangeError`/`SyntaxError`. Where the host permits: `exec`, `execStream`, `shell`, `stream`.
 
 ## Calling operations
 

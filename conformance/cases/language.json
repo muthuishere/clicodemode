@@ -1503,5 +1503,143 @@
    "result": "1,b,a",
    "exit": 0
   }
+ },
+ {
+  "id": "lang7-regex-replace-groups",
+  "spec": [
+   "LANG-7"
+  ],
+  "description": "regex replace with numbered and named groups",
+  "program": "[\"John Smith\".replace(/(\\w+)\\s(\\w+)/, \"$2, $1\"), \"2026-11\".replace(/(?<y>\\d+)-(?<m>\\d+)/, \"$<m>/$<y>\")]",
+  "expect": {
+   "result": [
+    "Smith, John",
+    "11/2026"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang7-regex-match-global",
+  "spec": [
+   "LANG-7"
+  ],
+  "description": "match with g returns every match; without g the first with index",
+  "program": "[\"a1b22\".match(/\\d+/g), \"xab\".match(/a(b)/).index]",
+  "expect": {
+   "result": [
+    [
+     "1",
+     "22"
+    ],
+    1
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang7-regex-utf16-index",
+  "spec": [
+   "LANG-7"
+  ],
+  "description": "regex indexes are UTF-16 code units",
+  "program": "\"héllo wörld\".search(/w/)",
+  "expect": {
+   "result": 6,
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang8-switch-fallthrough",
+  "spec": [
+   "LANG-8"
+  ],
+  "description": "switch uses ===, falls through until break",
+  "program": "const out = []; switch (\"2\") { case 2: out.push(\"num\"); break; case \"2\": out.push(\"str\"); case \"3\": out.push(\"next\"); break; default: out.push(\"d\") } out",
+  "expect": {
+   "result": [
+    "str",
+    "next"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang9-class-extends-super",
+  "spec": [
+   "LANG-9"
+  ],
+  "description": "class with extends, super() and super.method()",
+  "program": "class A { constructor(n) { this.n = n } hi() { return \"A\" + this.n } }\nclass B extends A { constructor(n) { super(n * 2) } hi() { return \"B\" + super.hi() } }\nconst b = new B(2); [b.hi(), b instanceof A, b instanceof B]",
+  "expect": {
+   "result": [
+    "BA4",
+    true,
+    true
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang9-class-extends-error",
+  "spec": [
+   "LANG-9"
+  ],
+  "description": "a class extending Error is an Error and catchable",
+  "program": "class E2 extends Error { constructor(m) { super(m); this.name = \"E2\" } }\nlet r; try { throw new E2(\"x\") } catch (e) { r = [e instanceof E2, e instanceof Error, String(e)] } r",
+  "expect": {
+   "result": [
+    true,
+    true,
+    "E2: x"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang10-map-set",
+  "spec": [
+   "LANG-10"
+  ],
+  "description": "Map and Set keep insertion order and compare keys like ===",
+  "program": "const m = new Map([[\"b\", 1]]); m.set(\"a\", 2).set(NaN, 3); const s = new Set([3, 1, 3]); [[...m.keys()].length, m.get(NaN), [...s]]",
+  "expect": {
+   "result": [
+    3,
+    3,
+    [
+     3,
+     1
+    ]
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang10-date-iso",
+  "spec": [
+   "LANG-10"
+  ],
+  "description": "Date parses and prints ISO UTC and subtracts to milliseconds",
+  "program": "const a = new Date(\"2026-01-01T00:00:00.000Z\"), b = new Date(\"2026-01-01T00:00:01.500Z\"); [b - a, a.toISOString()]",
+  "expect": {
+   "result": [
+    1500,
+    "2026-01-01T00:00:00.000Z"
+   ],
+   "exit": 0
+  }
+ },
+ {
+  "id": "lang11-tagged-template",
+  "spec": [
+   "LANG-11"
+  ],
+  "description": "a tag gets (strings, ...values); values are not spliced",
+  "program": "function q(s, ...v) { return s.join(\"|\") + \":\" + v.join(\",\") } q`a${1}b${\"x; y\"}c`",
+  "expect": {
+   "result": "a|b|c:1,x; y",
+   "exit": 0
+  }
  }
 ]

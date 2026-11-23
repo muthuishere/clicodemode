@@ -33,6 +33,7 @@ func frozen(kv ...any) *Object {
 
 func installGlobals(it *Interp) {
 	g := it.globals
+	defer installLang(g)
 	printFn := bi("print", func(r *Runner, _ Value, args []Value) (Value, error) {
 		parts := make([]string, len(args))
 		for i, a := range args {
@@ -471,6 +472,11 @@ func (r *Runner) getMember(obj Value, key string, at Node) (Value, error) {
 		if v, ok := o.Get(key); ok {
 			return v, nil
 		}
+		for p := o.proto; p != nil; p = p.proto {
+			if v, ok := p.Get(key); ok {
+				return v, nil
+			}
+		}
 		if key == "hasOwnProperty" {
 			return bi("hasOwnProperty", func(_ *Runner, _ Value, a []Value) (Value, error) {
 				_, ok := o.Get(toString(arg(a, 0)))
@@ -492,6 +498,12 @@ func (r *Runner) getMember(obj Value, key string, at Node) (Value, error) {
 		if m := arrayMethod(o, key); m != nil {
 			return m, nil
 		}
+		if m := arrayMethod2(o, key); m != nil {
+			return m, nil
+		}
+		if v, ok := o.extra[key]; ok {
+			return v, nil
+		}
 		return Undefined, nil
 	case string:
 		if key == "length" {
@@ -507,7 +519,13 @@ func (r *Runner) getMember(obj Value, key string, at Node) (Value, error) {
 			}
 			return Undefined, nil
 		}
+		if m := r.regexStringMethod(o, key); m != nil {
+			return m, nil
+		}
 		if m := stringMethod(o, key); m != nil {
+			return m, nil
+		}
+		if m := stringMethod2(o, key); m != nil {
 			return m, nil
 		}
 		return Undefined, nil
@@ -568,7 +586,30 @@ func (r *Runner) getMember(obj Value, key string, at Node) (Value, error) {
 			}
 			return o.(*Builtin).Name, nil
 		}
+		if b, ok := o.(*Builtin); ok && b.Statics != nil {
+			if v, ok := b.Statics.Get(key); ok {
+				return v, nil
+			}
+		}
 		return Undefined, nil
+	case *Class:
+		if key == "name" {
+			return o.Name, nil
+		}
+		for c := o; c != nil; c = c.Super {
+			if v, ok := c.Statics.Get(key); ok {
+				return v, nil
+			}
+		}
+		return Undefined, nil
+	case *MapV:
+		return r.mapMember(o, key), nil
+	case *SetV:
+		return r.setVMember(o, key), nil
+	case *DateV:
+		return r.dateMember(o, key), nil
+	case *RegExp:
+		return r.regexMember(o, key), nil
 	case *Stream:
 		return streamMember(o, key), nil
 	case nil, undefinedT:

@@ -23,7 +23,10 @@ type undefinedT struct{}
 var Undefined Value = undefinedT{}
 
 // Array is a JS array.
-type Array struct{ Elems []Value }
+type Array struct {
+	Elems []Value
+	extra map[string]Value // non-index properties (exec results' index, groups; raw)
+}
 
 // Object is a JS plain object with insertion-ordered keys.
 type Object struct {
@@ -31,6 +34,9 @@ type Object struct {
 	vals map[string]Value
 	// Frozen objects reject writes (used for host-provided namespaces).
 	Frozen bool
+	proto  *Object // class instances: methods are looked up here
+	class  *Class  // class instances: for instanceof
+	native string  // "Array", "Object", "Promise": constructible namespaces
 }
 
 // NewObject returns an empty object.
@@ -96,12 +102,18 @@ type Function struct {
 	// to turn a step function into a static ref "module#export".
 	ExportModule string
 	ExportName   string
+	// Home is the class a method or constructor belongs to (for super).
+	Home *Class
 }
 
 // Builtin is a host function.
 type Builtin struct {
 	Name string
 	Fn   func(r *Runner, this Value, args []Value) (Value, error)
+	// New, when set, makes the builtin a constructor (new Map(), ...).
+	New func(r *Runner, args []Value) (Value, error)
+	// Statics are properties such as Number.isInteger or Date.now.
+	Statics *Object
 }
 
 // Promise is a JS promise settled from any goroutine.
@@ -151,6 +163,9 @@ func (p *Promise) onSettle(f func()) {
 
 // ---- conversions ----
 
+// TypeOf is JavaScript's typeof (null is "object").
+func TypeOf(v Value) string { return typeOf(v) }
+
 func typeOf(v Value) string {
 	switch v.(type) {
 	case undefinedT:
@@ -163,7 +178,7 @@ func typeOf(v Value) string {
 		return "number"
 	case string:
 		return "string"
-	case *Function, *Builtin:
+	case *Function, *Builtin, *Class:
 		return "function"
 	}
 	return "object"
@@ -266,6 +281,19 @@ func toString(v Value) string {
 		return "[object Promise]"
 	case *Stream:
 		return "[object Stream]"
+	case *DateV:
+		if math.IsNaN(x.ms) {
+			return "Invalid Date"
+		}
+		return x.t().Local().Format("Mon Jan 02 2006 15:04:05 GMT-0700")
+	case *RegExp:
+		return "/" + x.Source + "/" + x.Flags
+	case *MapV:
+		return "[object Map]"
+	case *SetV:
+		return "[object Set]"
+	case *Class:
+		return "class " + x.Name + " { [code] }"
 	}
 	return fmt.Sprint(v)
 }
@@ -283,6 +311,8 @@ func toNumber(v Value) float64 {
 		return 0
 	case float64:
 		return x
+	case *DateV:
+		return x.ms
 	case string:
 		s := strings.TrimSpace(x)
 		if s == "" {
@@ -500,6 +530,25 @@ func toGo(v Value, depth int) any {
 			out[i] = toGo(e, depth+1)
 		}
 		return out
+	case *DateV:
+		if s, ok := x.iso(); ok {
+			return s
+		}
+		return nil
+	case *RegExp:
+		return "/" + x.Source + "/" + x.Flags
+	case *SetV:
+		out := make([]any, len(x.m.keys))
+		for i, e := range x.m.keys {
+			out[i] = toGo(e, depth+1)
+		}
+		return out
+	case *MapV:
+		out := make(map[string]any, len(x.keys))
+		for i, k := range x.keys {
+			out[toString(k)] = toGo(x.vals[i], depth+1)
+		}
+		return out
 	case *Object:
 		out := make(map[string]any, len(x.keys))
 		for _, k := range x.keys {
@@ -532,8 +581,17 @@ func jsonStringify(it *Interp, v Value, indent string) (Value, error) {
 
 func writeJSON(it *Interp, b *strings.Builder, v Value, indent, cur string, seen map[any]bool) (bool, error) {
 	switch x := v.(type) {
-	case undefinedT, *Function, *Builtin:
+	case undefinedT, *Function, *Builtin, *Class:
 		return false, nil
+	case *DateV:
+		s, ok := x.iso()
+		if !ok {
+			b.WriteString("null")
+			return true, nil
+		}
+		b.WriteString(`"` + s + `"`)
+	case *MapV, *SetV, *RegExp:
+		b.WriteString("{}")
 	case nil:
 		b.WriteString("null")
 	case bool:
@@ -700,6 +758,11 @@ func makeError(name, msg string) *Object {
 }
 
 func isErrorObject(o *Object) bool {
+	for c := o.class; c != nil; c = c.Super {
+		if c.SuperNative != nil && strings.HasSuffix(c.SuperNative.Name, "Error") {
+			return true
+		}
+	}
 	n, ok1 := o.vals["name"]
 	_, ok2 := o.vals["message"]
 	s, isStr := n.(string)
@@ -767,6 +830,27 @@ func inspect(v Value, depth int) string {
 		return "[Function: " + x.Name + "]"
 	case *Builtin:
 		return "[Function: " + x.Name + "]"
+	case *Class:
+		return "[class " + cmpStr(x.Name, "(anonymous)") + "]"
+	case *MapV:
+		parts := make([]string, len(x.keys))
+		for i := range x.keys {
+			parts[i] = inspect(x.keys[i], depth+1) + " => " + inspect(x.vals[i], depth+1)
+		}
+		return fmt.Sprintf("Map(%d) {%s}", len(x.keys), wrapParts(parts))
+	case *SetV:
+		parts := make([]string, len(x.m.keys))
+		for i := range x.m.keys {
+			parts[i] = inspect(x.m.keys[i], depth+1)
+		}
+		return fmt.Sprintf("Set(%d) {%s}", len(x.m.keys), wrapParts(parts))
+	case *DateV:
+		if s, ok := x.iso(); ok {
+			return s
+		}
+		return "Invalid Date"
+	case *RegExp:
+		return "/" + x.Source + "/" + x.Flags
 	}
 	return toString(v)
 }
@@ -799,4 +883,18 @@ func num(f float64) Value {
 		return smallNums[int(f)+1024]
 	}
 	return f
+}
+
+func cmpStr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+func wrapParts(p []string) string {
+	if len(p) == 0 {
+		return ""
+	}
+	return " " + strings.Join(p, ", ") + " "
 }

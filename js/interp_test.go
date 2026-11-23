@@ -191,8 +191,8 @@ func TestDiagnostics(t *testing.T) {
 	cases := []struct{ src, want string }{
 		{"let x = ;", "test.js:1:9: syntax error: unexpected \";\""},
 		{"const a = 1\nconst b", "test.js:2:7: syntax error: `const` declaration needs an initial value"},
-		{"class A {}", "test.js:1:1: syntax error: classes are not supported"},
-		{"new Date()", "test.js:1:1: syntax error: `new` is not supported"},
+		{"class A { get x() { return 1 } }", "test.js:1:11: syntax error: getters, setters and private"},
+		{"delete o.x", "test.js:1:1: syntax error: `delete` is not supported"},
 		{"import('x')", "test.js:1:1: syntax error: dynamic import() is not supported"},
 		{"function f() { await 1 }", "test.js:1:16: syntax error: `await` is only valid in async functions"},
 		{"if (x {", "test.js:1:7: syntax error: expected \")\""},
