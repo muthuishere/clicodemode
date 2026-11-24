@@ -145,3 +145,5 @@ class Capabilities:
     fingerprint: str
     language: Dict[str, Any]
     operations: List[Operation]
+    #: JS modules the host ships: [{name, description, exports: [{name, doc}]}]
+    modules: List[Dict[str, Any]] = field(default_factory=list)

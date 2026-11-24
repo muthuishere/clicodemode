@@ -52,6 +52,7 @@ export default defineConfig({
 				},
 				{ label: 'JS subset and limitations', link: '/language/' },
 				{ label: 'Sessions (persistent REPL)', link: '/sessions/' },
+				{ label: 'Ship your own JS modules', link: '/modules/' },
 				{ label: 'Operations API', link: '/operations-api/' },
 				{ label: 'MCP adapter (optional)', link: '/mcp/' },
 				{ label: 'Workflows and WFNexus', link: '/workflows/' },

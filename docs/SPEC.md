@@ -1,7 +1,7 @@
 # CLI CodeMode specification
 
 Spec version `codemode/v0` (the `spec` field of `code capabilities`).
-Implementation: this repository, v0.7.x. Keywords MUST, MUST NOT, SHOULD and
+Implementation: this repository, v0.8.x. Keywords MUST, MUST NOT, SHOULD and
 MAY are normative. Every requirement has an ID; `codemode/spec_test.go`
 checks the CLI-level ones end to end and names the test covering each of the
 others. A change that breaks a requirement is a breaking change.
@@ -16,8 +16,8 @@ and returns only the result.
 
 | ID | Requirement |
 |---|---|
-| CLI-1 | Subcommands: `operations`, `describe <op>`, `capabilities`, `docs`, `check`, `compile`, `run`, `eval`, `skill`, `run-step`. `help`/no args prints usage, exit 0. |
-| CLI-2 | `check`, `compile`, `run` take a file path or `-` (stdin). Programs from stdin or eval MUST NOT import modules. |
+| CLI-1 | Subcommands: `operations`, `modules`, `describe <op|module>`, `capabilities`, `docs`, `check`, `compile`, `run`, `eval`, `skill`, `run-step`. `help`/no args prints usage, exit 0. |
+| CLI-2 | `check`, `compile`, `run` take a file path or `-` (stdin). Programs from stdin or eval MUST NOT import files; they may import registered modules (MOD-2). |
 | CLI-3 | Exit codes: 0 success; 1 the program ran and failed (uncaught error, failed operation, unhandled rejection, limit hit); 2 usage error or diagnostics, in which case **nothing ran**. |
 | CLI-4 | `run --json` / `eval --json` print exactly one JSON object `{ok, value, error?, diagnostics?, ms}`. Without `--json`, a string result prints raw, other results as JSON, nothing for null/undefined. |
 | CLI-5 | Diagnostics have `severity, file, line, col, message, hint?`; text form `file:line:col: severity: message (hint)`. Line and column are 1-based. |
@@ -32,7 +32,7 @@ and returns only the result.
 
 | ID | Requirement |
 |---|---|
-| CAP-1 | `capabilities --json` returns `{spec, version, fingerprint, language, operations}`. |
+| CAP-1 | `capabilities --json` returns `{spec, version, fingerprint, language, operations}`, plus `modules` when the host registered any (MOD-4). |
 | CAP-2 | `fingerprint` = `sha256:` + 32 hex chars over spec version, CLI version and every operation's public contract. It MUST be stable for identical registries and MUST change when any operation is added, removed or its contract changes. |
 | CAP-3 | Each operation: `name` (dotted segments `[A-Za-z][A-Za-z0-9_-]*`, case-sensitive, never folded), `description`, `input_schema?`, `output_schema?`, `side_effects` (`none|local|external`, default `local`), `idempotent`, `authorization?`, `examples?`. Registration MUST reject bad names, duplicates, missing handlers and invalid JSON schemas. |
 | CAP-4 | `language` lists `features`, `unsupported`, `globals`; it MUST match what the interpreter accepts. |
@@ -106,7 +106,20 @@ and returns only the result.
 | MCP-1 | The core packages MUST NOT import `adapters/mcp`. |
 | MCP-2 | It serves JSON-RPC 2.0 over stdio (protocol 2025-06-18): `initialize`, `ping`, `tools/list`, `tools/call`, `notifications/cancelled`; tools `code_capabilities code_describe code_check code_run code_docs`; `code_run` takes an optional `input` (any JSON). A long-lived adapter process lets an agent call `code_run` repeatedly with no new process per call. |
 
-## 10. Sessions
+## 10. Host modules
+
+A host may ship JavaScript (and JSON data) modules inside its build, so
+agents import higher-level building blocks instead of composing operations
+by hand. Modules compose operations; they add no privilege.
+
+| ID | Requirement |
+|---|---|
+| MOD-1 | A module is registered from source text, one file, or every `.js`/`.json` file under a folder (Go `fs.FS`/`embed`, Rust `include_str!` or the `build::embed_dir` build helper, a TypeScript `{path: source}` map or the `clicodemode-embed` generator, Python package data). Its name is `scheme:path`: `.js` files drop the extension, `.json` files keep it. Registration rejects bad names, duplicates, unparsable JavaScript and invalid JSON. A file's leading comment is its default description. |
+| MOD-2 | `import ... from "scheme:path"` loads a registered module, from files, stdin, eval and sessions alike. Inside a module, `./` and `../` imports resolve within the same scheme and MUST NOT leave it. An unregistered name is a check error listing the registered modules. |
+| MOD-3 | `check` covers every imported module (unknown operations, literal argument schemas, syntax) and nothing runs when one fails; `Engine.CheckModules()` checks all registered modules for a host's own tests. |
+| MOD-4 | `capabilities` lists modules with their exports and the doc comment above each export; `code modules` lists them; `code describe <module>` shows exports and source; `code skill` lists modules before operations. The fingerprint covers module names, descriptions and sources, and is unchanged for a CLI without modules. |
+
+## 11. Sessions
 
 A session (`Engine.NewSession`) keeps one top-level scope across many
 programs, like a REPL. Every run is still checked before it runs (OP-3,
@@ -124,7 +137,7 @@ LANG-2) and its operations validated as in OP-2.
 | SES-9 | A run's timeout and detach deadline count active time only: `PauseClock(ctx)` in a handler stops the clock until its resume function is called; pauses from parallel handlers nest. |
 | SES-5 | `Vars()` lists persistent bindings with name, kind, type and a short preview, sorted by name; `Reset()` clears them; `Close()` cancels every run and returns once they stopped; runs after `Close` fail. |
 
-## 11. Security statement
+## 12. Security statement
 
 The interpreter is **not a sandbox for hostile code**. It bounds steps, time,
 depth and concurrency and exposes only registered operations and
@@ -132,7 +145,7 @@ policy-permitted processes, but operations run with the host CLI's
 privileges. Hosts MUST register only what they are willing to let a program
 do.
 
-## 12. Compatibility
+## 13. Compatibility
 
 Legacy AOS batch YAML and WFNexus workflow YAML are not reinterpreted by this
 library; see `COMPATIBILITY.md`. WFNexus export (WF-5) was validated against

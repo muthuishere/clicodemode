@@ -42,7 +42,9 @@ const usage = `Code Mode for this CLI: discover operations and run small program
 
 Usage:
   %[1]s operations [--json]            list operations
-  %[1]s describe <operation> [--json]  show one operation's contract
+  %[1]s modules [--json]               list JS modules this CLI ships (import "scheme:name")
+  %[1]s describe <operation|module> [--json]
+                                       show an operation's contract, or a module's exports and source
   %[1]s capabilities --json            full machine-readable capability document
   %[1]s docs                           language and API reference for writing programs
   %[1]s check <program.js|->           parse and validate; nothing runs
@@ -105,9 +107,24 @@ func (c *CLI) Main(ctx context.Context, args []string) int {
 	switch sub {
 	case "operations", "ops":
 		return c.operations(jsonOut)
+	case "modules":
+		var infos []ModuleInfo
+		for _, m := range c.Engine.Registry.Modules() {
+			infos = append(infos, m.Info())
+		}
+		if jsonOut {
+			if infos == nil {
+				infos = []ModuleInfo{}
+			}
+			return c.writeJSON(infos)
+		}
+		for _, mi := range infos {
+			fmt.Fprintf(c.Stdout, "%s\t%s\n", mi.Name, mi.Description)
+		}
+		return 0
 	case "describe":
 		if len(pos) != 1 {
-			return c.usageErr("describe needs exactly one operation name")
+			return c.usageErr("describe needs exactly one operation or module name")
 		}
 		return c.describe(pos[0], jsonOut)
 	case "capabilities", "caps":
@@ -353,6 +370,32 @@ func (c *CLI) operations(jsonOut bool) int {
 }
 
 func (c *CLI) describe(name string, jsonOut bool) int {
+	if strings.Contains(name, ":") {
+		m, ok := c.Engine.Registry.LookupModule(strings.TrimSuffix(name, ".js"))
+		if !ok {
+			return c.usageErr(fmt.Sprintf("no module %q is registered (see `%s modules`)", name, c.Name))
+		}
+		info := m.Info()
+		if jsonOut {
+			return c.writeJSON(struct {
+				ModuleInfo
+				Source string `json:"source"`
+			}{info, m.Source})
+		}
+		fmt.Fprintf(c.Stdout, "%s\n", info.Name)
+		if info.Description != "" {
+			fmt.Fprintf(c.Stdout, "  %s\n", info.Description)
+		}
+		for _, ex := range info.Exports {
+			fmt.Fprintf(c.Stdout, "  export %s", ex.Name)
+			if ex.Doc != "" {
+				fmt.Fprintf(c.Stdout, ": %s", ex.Doc)
+			}
+			fmt.Fprintln(c.Stdout)
+		}
+		fmt.Fprintf(c.Stdout, "\n%s\n", m.Source)
+		return 0
+	}
 	op, ok := c.Engine.Registry.Lookup(name)
 	if !ok {
 		msg := fmt.Sprintf("unknown operation %q", name)

@@ -55,6 +55,21 @@ export interface Capabilities {
   fingerprint: string;
   language: LanguageInfo;
   operations: Operation[];
+  modules?: ModuleInfo[];
+}
+
+/** A JS (or JSON data) module the host ships in its package or bundle;
+ * programs import it as `import { x } from "scheme:path"`. */
+export interface ModuleSpec {
+  name: string; // "scheme:path", e.g. "mycli:layout" or "mycli:data/presets.json"
+  source: string;
+  description?: string; // default: the file's leading comment
+}
+
+export interface ModuleInfo {
+  name: string;
+  description?: string;
+  exports: { name: string; doc?: string }[];
 }
 
 export interface Result {

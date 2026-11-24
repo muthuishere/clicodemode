@@ -8,7 +8,7 @@ around the Go engine compiled to WebAssembly (`GOOS=wasip1`) and run by
 [wasmtime](https://github.com/bytecodealliance/wasmtime-py). The engine owns
 parsing, language semantics and portable validation; Python never interprets
 the language and nothing is reimplemented. The host (your Python code) owns
-authorization and path/exec security. Version 0.7.1 matches the Go library
+authorization and path/exec security. Version 0.8.0 matches the Go library
 version; `cm.engine_version()` reports the engine that is embedded.
 
 ## Install
@@ -27,7 +27,7 @@ git clone https://github.com/muthuishere/clicodemode && cd clicodemode
 bash python/scripts/check_python.sh        # venv, build wasm, pytest, mypy --strict, wheel in python/dist/
 # or just the two commands it wraps for a wheel:
 bash python/scripts/build_wasm.sh && python3 -m pip install build && python3 -m build python
-pip install python/dist/clicodemode-0.7.1-py3-none-any.whl
+pip install python/dist/clicodemode-0.8.0-py3-none-any.whl
 ```
 
 ## Quickstart (a Click CLI, copy-paste and run)
@@ -57,6 +57,18 @@ export default async () => {
 }""")
 print(r.ok, r.value)                       # True {'a': {'qty': 5, 'sku': 'apple'}, 'total': 7}
 print(cm.engine_version())
+```
+
+
+## Ship your own JS modules
+
+Put higher-level recipes in `.js` files inside your package (they ship in the
+wheel) and register them; programs import them by name:
+
+```python
+from importlib.resources import files
+cm.register_modules("mycli", files("mycli") / "js")   # js/layout.js -> "mycli:layout"
+# also: cm.register_module_file(...), cm.register_module("mycli:x", source)
 ```
 
 ## Limitations at a glance (measured: Apple M-series, Python 3.12, wasmtime 51)

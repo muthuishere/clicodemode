@@ -737,8 +737,26 @@ func (e *Engine) loader(entry string) js.ModuleLoader {
 		root = filepath.Dir(entry)
 	}
 	return func(from, spec string) (string, string, error) {
+		if name, isMod, err := resolveModule(from, spec); isMod {
+			if err != nil {
+				return "", "", err
+			}
+			m, ok := e.Registry.LookupModule(name)
+			if !ok {
+				msg := fmt.Sprintf("no module %q is registered", name)
+				if names := e.moduleNames(); len(names) > 0 {
+					msg += " (modules: " + strings.Join(names, ", ") + ")"
+				}
+				return "", "", errors.New(msg)
+			}
+			src := m.Source
+			if strings.HasSuffix(name, ".json") {
+				src = "export default " + src
+			}
+			return src, name, nil
+		}
 		if root == "" {
-			return "", "", errors.New("imports are not available for programs read from stdin or eval")
+			return "", "", errors.New("only registered modules (scheme:name) can be imported by programs read from stdin or eval")
 		}
 		if !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") {
 			return "", "", errors.New("only relative imports (./ or ../) are allowed; there is no npm")
@@ -783,4 +801,12 @@ func (e *Engine) loader(entry string) js.ModuleLoader {
 		}
 		return src, p, nil
 	}
+}
+
+func (e *Engine) moduleNames() []string {
+	var out []string
+	for _, m := range e.Registry.Modules() {
+		out = append(out, m.Name)
+	}
+	return out
 }

@@ -1,6 +1,6 @@
 {
   "name": "clicodemode",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Code Mode for JS and TS CLIs: register your commands as operations, agents run a small JavaScript-like program that calls them. Engine is Go compiled to WASM.",
   "type": "module",
   "main": "./dist/index.js",
@@ -18,7 +18,8 @@
     "dist/*.d.ts",
     "dist/codemode.wasm",
     "README.md",
-    "examples"
+    "examples",
+    "bin"
   ],
   "engines": {
     "node": ">=20"
@@ -41,5 +42,8 @@
   "homepage": "https://muthuishere.github.io/clicodemode/",
   "bugs": {
     "url": "https://github.com/muthuishere/clicodemode/issues"
+  },
+  "bin": {
+    "clicodemode-embed": "bin/clicodemode-embed.mjs"
   }
 }

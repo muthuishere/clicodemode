@@ -1,6 +1,6 @@
 [package]
 name = "clicodemode"
-version = "0.7.1"
+version = "0.8.0"
 edition = "2021"
 description = "Code Mode for Rust CLIs: register your commands as operations; agents run small JavaScript-like programs that call them."
 license = "MIT"

@@ -7,7 +7,7 @@ import json
 import queue
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 from ._guest import Guest, GuestExit
 from .errors import EngineError, GuestCrashed, UsageError
@@ -34,6 +34,16 @@ class _Aborted(Exception):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+_MODULE_RE = __import__("re").compile(r"^[A-Za-z][A-Za-z0-9_-]*:[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*(\.json)?$")
+
+
+def _read_text(f: Any) -> str:
+    if hasattr(f, "read_text"):
+        return str(f.read_text(encoding="utf-8"))
+    with open(f, encoding="utf-8") as fh:
+        return fh.read()
 
 
 def valid_name(n: str) -> bool:
@@ -75,6 +85,7 @@ class CodeMode:
         self.policy = policy or Policy()
         self._ops: Dict[str, Operation] = {}
         self._handlers: Dict[str, Handler] = {}
+        self._modules: Dict[str, Dict[str, str]] = {}
         self._guest: Optional[Guest] = None
         self._next_id = 0
         self._lock = threading.RLock()
@@ -101,6 +112,66 @@ class CodeMode:
             self._ops[op.name] = op
             self._handlers[op.name] = handler
             self._drop_guest()  # restart with the new contract
+
+    # ------------------------------------------------------------------ modules
+
+    def register_module(self, name: str, source: str, description: str = "") -> None:
+        """Add a JS (or ``.json`` data) module programs import as ``"scheme:path"``.
+
+        ``source`` is the module text, e.g. package data read with
+        ``importlib.resources``. The description defaults to the file's
+        leading comment.
+        """
+        name = name[:-3] if name.endswith(".js") else name
+        if not _MODULE_RE.match(name):
+            raise UsageError(f"invalid module name {name!r} (want scheme:path, e.g. mycli:layout)")
+        with self._lock:
+            if name in self._modules:
+                raise UsageError(f"module {name!r} already registered")
+            self._modules[name] = {"name": name, "source": source, "description": description}
+            self._drop_guest()  # restart with the new module set
+
+    def register_module_file(self, scheme: str, file: Any) -> None:
+        """Add one ``.js``/``.json`` file as ``scheme:<file name>``. ``file`` is a
+        path or an ``importlib.resources`` Traversable (package data in a wheel)."""
+        name = getattr(file, "name", None) or str(file).replace("\\", "/").rsplit("/", 1)[-1]
+        if not (name.endswith(".js") or name.endswith(".json")):
+            raise UsageError(f"module file {name!r} must end in .js or .json")
+        self.register_module(f"{scheme}:{name}", _read_text(file))
+
+    def register_modules(self, scheme: str, root: Any) -> List[str]:
+        """Add every ``.js``/``.json`` file under ``root`` as ``scheme:<relative path>``.
+
+        ``root`` is a directory path, an ``importlib.resources`` Traversable
+        (``files("mypkg") / "js"``, which works from a wheel or zip), or a
+        ``{relative_path: source}`` dict. Returns the registered names.
+        """
+        found: List[Tuple[str, str]] = []
+        if isinstance(root, dict):
+            found = [(k.lstrip("./"), v) for k, v in root.items()]
+        else:
+            if isinstance(root, (str, bytes)) or hasattr(root, "__fspath__"):
+                import pathlib
+
+                root = pathlib.Path(root)
+
+            def walk(node: Any, prefix: str) -> None:
+                for child in sorted(node.iterdir(), key=lambda c: c.name):
+                    rel = prefix + child.name
+                    if child.is_dir():
+                        walk(child, rel + "/")
+                    elif child.name.endswith((".js", ".json")):
+                        found.append((rel, _read_text(child)))
+
+            walk(root, "")
+        names = []
+        for rel, src in found:
+            if rel.endswith((".js", ".json")):
+                self.register_module(f"{scheme}:{rel}", src)
+                names.append(f"{scheme}:{rel[:-3] if rel.endswith('.js') else rel}")
+        if not names:
+            raise UsageError(f"no .js or .json files under {root!r}")
+        return names
 
     def operation(
         self,
@@ -194,6 +265,7 @@ class CodeMode:
         cfg = {
             "version": self.version,
             "operations": [o.to_json() for o in self._ops.values()],
+            "modules": list(self._modules.values()),
             "limits": self.limits.to_json(),
         }
         self._guest = g
@@ -442,6 +514,7 @@ class CodeMode:
             fingerprint=raw.get("fingerprint", ""),
             language=raw.get("language") or {},
             operations=[Operation.from_json(o) for o in (raw.get("operations") or [])],
+            modules=list(raw.get("modules") or []),
         )
 
     def operations(self) -> List[Operation]:

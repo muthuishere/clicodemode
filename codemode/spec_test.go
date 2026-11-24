@@ -33,6 +33,10 @@ var specCoverage = map[string]string{
 	"SES-3":   "TestSessionPerRunTimeoutAndCancel",
 	"SES-4":   "TestSessionDetachAndPoll",
 	"SES-5":   "TestSessionVarsResetClose",
+	"MOD-1":   "TestModulesFromFolder; npm modules.test.mjs; python test_modules.py; rust tests/modules.rs",
+	"MOD-2":   "TestModulesImport",
+	"MOD-3":   "TestModulesChecked",
+	"MOD-4":   "TestModulesDiscovery",
 	"SES-6":   "TestSessionDefineAndOpsRefresh",
 	"SES-7":   "TestSessionHandlerContext",
 	"SES-8":   "TestSessionPollWait",
@@ -96,7 +100,7 @@ func TestSpec_CLI2(t *testing.T) {
 		t.Fatalf("stdin run: %d %q", code, out)
 	}
 	code, _, errOut := cli(t, `import x from "./x.js"`, "run", "-")
-	if code != 2 || !strings.Contains(errOut, "imports are not available") {
+	if code != 2 || !strings.Contains(errOut, "only registered modules") {
 		t.Fatalf("stdin import must fail before running: %d %s", code, errOut)
 	}
 }

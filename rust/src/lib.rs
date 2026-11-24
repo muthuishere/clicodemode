@@ -226,6 +226,7 @@ impl Session {
 pub struct CodeMode {
     version: String,
     ops: Vec<Operation>,
+    modules: Vec<(String, String)>,
     handlers: HashMap<String, Arc<Box<Handler>>>,
     limits: Limits,
     session: Option<Session>,
@@ -239,6 +240,7 @@ impl CodeMode {
         Ok(CodeMode {
             version: version.into(),
             ops: Vec::new(),
+            modules: Vec::new(),
             handlers: HashMap::new(),
             limits: Limits::default(),
             session: None,
@@ -278,6 +280,110 @@ impl CodeMode {
         Ok(())
     }
 
+    /// Add a JS (or `.json` data) module that programs import as
+    /// `"scheme:path"`, from source text, usually embedded at build time with
+    /// `include_str!` (see [`embed_modules!`]).
+    pub fn register_module(&mut self, name: &str, source: &str) -> Result<(), Error> {
+        let name = name.strip_suffix(".js").unwrap_or(name).to_string();
+        if !valid_module_name(&name) {
+            return Err(Error::Usage(format!(
+                "invalid module name {name:?} (want scheme:path, e.g. mycli:layout)"
+            )));
+        }
+        if self.modules.iter().any(|(n, _)| *n == name) {
+            return Err(Error::Usage(format!("module {name:?} already registered")));
+        }
+        self.modules.push((name, source.to_string()));
+        self.session = None; // restart with the new module set
+        Ok(())
+    }
+
+    /// Add `(relative path, source)` pairs as `scheme:<relative path>`; `.js`
+    /// and `.json` entries only. Pair it with [`embed_modules!`] to bake a
+    /// folder into the binary.
+    pub fn register_modules(
+        &mut self,
+        scheme: &str,
+        files: &[(&str, &str)],
+    ) -> Result<Vec<String>, Error> {
+        let mut names = Vec::new();
+        for (rel, src) in files {
+            let rel = rel.trim_start_matches("./");
+            if rel.ends_with(".js") || rel.ends_with(".json") {
+                self.register_module(&format!("{scheme}:{rel}"), src)?;
+                names.push(format!(
+                    "{scheme}:{}",
+                    rel.strip_suffix(".js").unwrap_or(rel)
+                ));
+            }
+        }
+        if names.is_empty() {
+            return Err(Error::Usage("no .js or .json modules given".into()));
+        }
+        Ok(names)
+    }
+
+    /// Add every `.js`/`.json` file under `dir`, read now, as
+    /// `scheme:<relative path>`.
+    pub fn register_modules_dir(
+        &mut self,
+        scheme: &str,
+        dir: impl AsRef<std::path::Path>,
+    ) -> Result<Vec<String>, Error> {
+        fn walk(
+            root: &std::path::Path,
+            d: &std::path::Path,
+            out: &mut Vec<(String, String)>,
+        ) -> std::io::Result<()> {
+            let mut entries: Vec<_> = std::fs::read_dir(d)?.collect::<Result<_, _>>()?;
+            entries.sort_by_key(|e| e.file_name());
+            for e in entries {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(root, &p, out)?;
+                } else if matches!(p.extension().and_then(|x| x.to_str()), Some("js" | "json")) {
+                    let rel = p
+                        .strip_prefix(root)
+                        .unwrap_or(&p)
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    out.push((rel, std::fs::read_to_string(&p)?));
+                }
+            }
+            Ok(())
+        }
+        let mut found = Vec::new();
+        walk(dir.as_ref(), dir.as_ref(), &mut found)
+            .map_err(|e| Error::Usage(format!("reading modules: {e}")))?;
+        let pairs: Vec<(&str, &str)> = found
+            .iter()
+            .map(|(a, b)| (a.as_str(), b.as_str()))
+            .collect();
+        self.register_modules(scheme, &pairs)
+    }
+
+    /// Add one `.js`/`.json` file, read now, as `scheme:<file name>`.
+    pub fn register_module_file(
+        &mut self,
+        scheme: &str,
+        file: impl AsRef<std::path::Path>,
+    ) -> Result<(), Error> {
+        let p = file.as_ref();
+        let name = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if !(name.ends_with(".js") || name.ends_with(".json")) {
+            return Err(Error::Usage(format!(
+                "module file {name:?} must end in .js or .json"
+            )));
+        }
+        let src = std::fs::read_to_string(p)
+            .map_err(|e| Error::Usage(format!("reading {}: {e}", p.display())))?;
+        self.register_module(&format!("{scheme}:{name}"), &src)
+    }
+
     /// Text printed by programs (`print`, `console.log`) during the last call.
     pub fn output(&self) -> &str {
         &self.last_output
@@ -289,6 +395,7 @@ impl CodeMode {
             let cfg = json!({
                 "version": self.version,
                 "operations": self.ops,
+                "modules": self.modules.iter().map(|(n, s)| json!({"name": n, "source": s})).collect::<Vec<_>>(),
                 "limits": {
                     "max_steps": self.limits.max_steps,
                     "max_call_depth": self.limits.max_call_depth,
@@ -388,6 +495,36 @@ impl CodeMode {
     }
 }
 
+fn valid_module_name(n: &str) -> bool {
+    let Some((scheme, path)) = n.split_once(':') else {
+        return false;
+    };
+    let path = path.strip_suffix(".json").unwrap_or(path);
+    valid_name(scheme)
+        && !scheme.contains('.')
+        && !path.is_empty()
+        && path.split('/').all(|seg| {
+            !seg.is_empty()
+                && seg
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+}
+
+/// Bake module files into the binary at build time, as `(relative path,
+/// source)` pairs for [`CodeMode::register_modules`]. Paths are relative to
+/// the crate root (`CARGO_MANIFEST_DIR`):
+///
+/// ```ignore
+/// cm.register_modules("mycli", clicodemode::embed_modules!("js", ["layout.js", "util/math.js"]))?;
+/// ```
+#[macro_export]
+macro_rules! embed_modules {
+    ($dir:literal, [$($file:literal),+ $(,)?]) => {
+        &[$(($file, include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $dir, "/", $file)))),+]
+    };
+}
+
 fn valid_name(n: &str) -> bool {
     !n.is_empty()
         && n.split('.').all(|seg| {
@@ -480,5 +617,62 @@ mod tests {
         assert!(matches!(cm.eval("1"), Err(Error::Runtime(_))));
         assert!(cm.session.is_none());
         assert_eq!(cm.eval("1 + 1").unwrap().value, json!(2)); // fresh engine
+    }
+}
+
+/// Build-script helper: bake a whole folder of modules into the binary.
+///
+/// In `build.rs`:
+///
+/// ```ignore
+/// fn main() { clicodemode::build::embed_dir("js", "modules.rs").unwrap(); }
+/// ```
+///
+/// and in your code:
+///
+/// ```ignore
+/// cm.register_modules("mycli", include!(concat!(env!("OUT_DIR"), "/modules.rs")))?;
+/// ```
+///
+/// Every `.js`/`.json` file under `dir` (relative to the crate root) becomes an
+/// `include_str!` entry, so the sources are compiled in and the folder is not
+/// read at run time. Cargo rebuilds when the folder changes.
+pub mod build {
+    use std::path::{Path, PathBuf};
+
+    pub fn embed_dir(dir: &str, out_file: &str) -> std::io::Result<()> {
+        let manifest =
+            PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()));
+        let root = manifest.join(dir);
+        let mut files = Vec::new();
+        collect(&root, &root, &mut files)?;
+        files.sort();
+        let mut src = String::from("&[\n");
+        for (rel, abs) in &files {
+            src.push_str(&format!("    ({rel:?}, include_str!({abs:?})),\n"));
+        }
+        src.push_str("]\n");
+        let out =
+            PathBuf::from(std::env::var("OUT_DIR").unwrap_or_else(|_| ".".into())).join(out_file);
+        std::fs::write(out, src)?;
+        println!("cargo:rerun-if-changed={}", root.display());
+        Ok(())
+    }
+
+    fn collect(root: &Path, d: &Path, out: &mut Vec<(String, String)>) -> std::io::Result<()> {
+        for e in std::fs::read_dir(d)? {
+            let p = e?.path();
+            if p.is_dir() {
+                collect(root, &p, out)?;
+            } else if matches!(p.extension().and_then(|x| x.to_str()), Some("js" | "json")) {
+                let rel = p
+                    .strip_prefix(root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                out.push((rel, p.canonicalize()?.to_string_lossy().into_owned()));
+            }
+        }
+        Ok(())
     }
 }

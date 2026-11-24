@@ -106,7 +106,9 @@ func TestSessionPauseClock(t *testing.T) {
 		time.Sleep(150 * time.Millisecond) // a human thinking
 		return "yes", nil
 	}})
-	s := NewEngine(reg).NewSession(SessionConfig{Timeout: 80 * time.Millisecond, DetachAfter: 80 * time.Millisecond})
+	e := NewEngine(reg)
+	e.Policy.Limits.MaxSteps = 1 << 40 // let the timeout, not the step budget, stop the loop
+	s := e.NewSession(SessionConfig{Timeout: 80 * time.Millisecond, DetachAfter: 80 * time.Millisecond})
 	defer s.Close()
 	r := s.Run(context.Background(), "await ops.approve()", RunOptions{})
 	if !r.OK || r.Value != "yes" || r.Detached {

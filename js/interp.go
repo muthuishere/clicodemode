@@ -684,6 +684,9 @@ func (r *Runner) doExport(n *Export, env *Env, exports *Object) error {
 	return nil
 }
 
+// PatternNames lists the names a binding pattern declares.
+func PatternNames(n Node) []string { return patternNames(n) }
+
 func patternNames(n Node) []string {
 	switch v := n.(type) {
 	case *Ident:

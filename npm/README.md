@@ -92,6 +92,21 @@ await cm.check('ops.issues.list({ state: "all" })');
 //   hint: "see `code describe issues.list`" }] }
 ```
 
+## Ship your own JS modules
+
+Put higher-level recipes in `.js` files and bake them in at build time.
+Agents import them by name:
+
+```sh
+npx clicodemode-embed js src/modules.generated.js
+```
+
+```js
+import modules from "./modules.generated.js";
+cm.registerModules("mycli", modules);            // or registerModule / registerModuleFile
+// a program can now: import { sideBySide } from "mycli:layout"
+```
+
 ## TypeScript
 
 Types ship with the package. The same CLI, typed:
@@ -180,7 +195,7 @@ generators, `delete`, getters/setters, regex lookaround and backreferences,
 The engine is the Go library [clicodemode](https://github.com/muthuishere/clicodemode)
 compiled to WebAssembly; this package loads it and passes your handlers in.
 Go is the primary implementation; the Node package is **experimental** and
-follows the same version (0.7.1). The `.wasm` is about 2.1 MB gzipped; a cold
+follows the same version (0.8.0). The `.wasm` is about 2.1 MB gzipped; a cold
 start (load plus one run) takes about 55 ms on Apple Silicon with Node 24.
 Node 20 or newer.
 

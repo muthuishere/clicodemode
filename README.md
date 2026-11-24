@@ -72,6 +72,26 @@ mycli code skill                          # generated SKILL.md for agents
 
 Try the demo: `go run ./cmd/democli code help`.
 
+### Ship your own JS modules
+
+Keep operations small, and put the recipes built on them in JavaScript files
+baked into your binary. Agents import them by name, and `code skill` lists
+them first:
+
+```go
+//go:embed js
+var jsFiles embed.FS
+reg.MustRegisterModules("mycli", jsFiles, "js") // js/layout.js -> "mycli:layout"
+```
+
+```js
+import { sideBySide } from "mycli:layout"
+await sideBySide("Code", "Safari")
+```
+
+Python, TypeScript and Rust take a folder, one file or plain content the same
+way: [modules guide](https://muthuishere.github.io/clicodemode/modules/).
+
 ## Shipped in real CLIs
 
 - **aos** ([v0.15.2](https://github.com/muthuishere/aos/releases/tag/v0.15.2)):

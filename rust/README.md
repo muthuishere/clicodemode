@@ -86,6 +86,17 @@ fn main() -> Result<(), clicodemode::Error> {
 
 Output: `ok=true value={"sum":42} printed="sum is 42\n"`
 
+
+## Ship your own JS modules
+
+Bake `.js` files into the binary; programs import them by name:
+
+```rust
+cm.register_modules("mycli", clicodemode::embed_modules!("js", ["layout.js"]))?;
+// whole folder: build.rs -> clicodemode::build::embed_dir("js", "modules.rs"),
+// then cm.register_modules("mycli", include!(concat!(env!("OUT_DIR"), "/modules.rs")))?
+```
+
 ## More of the API
 
 ```rust

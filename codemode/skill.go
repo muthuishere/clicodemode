@@ -24,7 +24,31 @@ func Skill(reg *Registry, name string) string {
 	fmt.Fprintf(&b, "description: Drive %s through Code Mode (`%s ...`): write a small JavaScript-like program that calls and composes its %d operation(s) instead of running commands one at a time. Use when a task needs several %s calls, parallel calls, loops or data shaping over results.\n---\n\n", cli, code, len(ops), cli)
 	fmt.Fprintf(&b, "# %s Code Mode\n\n", cli)
 	fmt.Fprintf(&b, "General language and workflow rules: see the global `code` skill (code/SKILL.md). Live reference: `%s docs`.\n\n", code)
-	fmt.Fprintf(&b, "Version: %s\n\n## Operations\n\n", reg.Version)
+	fmt.Fprintf(&b, "Version: %s\n\n", reg.Version)
+	if mods := reg.Modules(); len(mods) > 0 {
+		// Modules first: they are the CLI's own higher-level building blocks,
+		// so an agent should reach for them before composing raw operations.
+		fmt.Fprintf(&b, "## Modules\n\nPrefer these over composing operations by hand. Read one with `%s describe <module>`.\n\n", code)
+		for _, m := range mods {
+			info := m.Info()
+			var names []string
+			for _, ex := range info.Exports {
+				names = append(names, ex.Name)
+			}
+			fmt.Fprintf(&b, "- `import { %s } from %q`", strings.Join(names, ", "), info.Name)
+			if info.Description != "" {
+				fmt.Fprintf(&b, " — %s", oneLine(info.Description))
+			}
+			b.WriteString("\n")
+			for _, ex := range info.Exports {
+				if ex.Doc != "" {
+					fmt.Fprintf(&b, "  - `%s`: %s\n", ex.Name, oneLine(ex.Doc))
+				}
+			}
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("## Operations\n\n")
 	if len(ops) == 0 {
 		b.WriteString("This CLI registers no operations yet.\n")
 	}
