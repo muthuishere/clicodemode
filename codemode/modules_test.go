@@ -142,3 +142,30 @@ func TestModulesDiscovery(t *testing.T) {
 		t.Fatalf("%d %s %s", code, out.String(), errb.String())
 	}
 }
+
+// OP-1: a failing call (unknown name, bad args) rejects its promise instead
+// of throwing synchronously, so .catch() sees it.
+func TestCallRejectsInsteadOfThrowing(t *testing.T) {
+	e, _ := moduleEngine(t)
+	r := e.Run(context.Background(), `
+		const n = "nope.op", m = "window.move"
+		const a = await call(n, {}).catch(e => "a:" + e.message)
+		const b = await ops[m.split(".")[0]][m.split(".")[1]]({ app: 1 }).catch(e => "b:" + e.name)
+		const p = call(n, {}); const isPromise = p instanceof Promise; await p.catch(() => null);
+		[a.startsWith("a:unknown operation"), b, isPromise]`, "p.js")
+	if b, _ := json.Marshal(r.Value); !r.OK || string(b) != `[true,"b:TypeError",true]` {
+		t.Fatalf("%+v %s", r, b)
+	}
+}
+
+// Skill lines keep whole words when long docs are shortened.
+func TestSkillDocsCutOnWords(t *testing.T) {
+	long := strings.Repeat("compare every environment ", 20)
+	got := oneLine(long)
+	if !strings.HasSuffix(got, "…") || strings.HasSuffix(strings.TrimSuffix(got, "…"), "environmen") || len([]rune(got)) > 241 {
+		t.Fatalf("%q", got)
+	}
+	if oneLine("short doc") != "short doc" {
+		t.Fatal("short docs unchanged")
+	}
+}

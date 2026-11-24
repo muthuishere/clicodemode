@@ -629,8 +629,18 @@ func freeze(o *js.Object) {
 // invoke validates and starts an operation, returning a promise.
 func (e *Engine) invoke(r *js.Runner, name string, a js.Value) (js.Value, error) {
 	if err := r.CountOp(); err != nil {
-		return nil, err
+		return nil, err // a limit: fatal, never a rejection
 	}
+	v, err := e.startOp(r, name, a)
+	if t, ok := err.(*js.Throw); ok {
+		// OP-1: call() and ops.x() always return a Promise, so an unknown name,
+		// bad arguments or a policy denial reject it (.catch sees them).
+		return r.Interp().Rejected(t.Value), nil
+	}
+	return v, err
+}
+
+func (e *Engine) startOp(r *js.Runner, name string, a js.Value) (js.Value, error) {
 	op, ok := e.Registry.Lookup(name)
 	if !ok {
 		msg := fmt.Sprintf("unknown operation %q", name)

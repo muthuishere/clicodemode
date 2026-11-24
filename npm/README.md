@@ -195,7 +195,7 @@ generators, `delete`, getters/setters, regex lookaround and backreferences,
 The engine is the Go library [clicodemode](https://github.com/muthuishere/clicodemode)
 compiled to WebAssembly; this package loads it and passes your handlers in.
 Go is the primary implementation; the Node package is **experimental** and
-follows the same version (0.8.0). The `.wasm` is about 2.1 MB gzipped; a cold
+follows the same version (0.8.1). The `.wasm` is about 2.1 MB gzipped; a cold
 start (load plus one run) takes about 55 ms on Apple Silicon with Node 24.
 Node 20 or newer.
 

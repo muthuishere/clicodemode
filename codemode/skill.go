@@ -133,8 +133,12 @@ func oneLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
 	}
-	if r := []rune(s); len(r) > 120 {
-		s = string(r[:117]) + "..."
+	if r := []rune(s); len(r) > 240 {
+		cut := string(r[:240])
+		if i := strings.LastIndexAny(cut, " ,;"); i > 160 {
+			cut = cut[:i]
+		}
+		s = strings.TrimRight(cut, " ,;") + "…" // whole words only
 	}
 	return s
 }
