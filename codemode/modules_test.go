@@ -4,7 +4,9 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -15,10 +17,14 @@ func moduleEngine(t *testing.T) (*Engine, *[]string) {
 	t.Helper()
 	reg := NewRegistry("aos 1.0")
 	var moves []string
+	var mu sync.Mutex
 	reg.MustRegister(Operation{Name: "window.move", Description: "Move a window.",
 		InputSchema: []byte(`{"type":"object","required":["app","zone"],"properties":{"app":{"type":"string"},"zone":{"type":"string"},"monitor":{"type":"number"}}}`),
 		Handler: func(_ context.Context, a map[string]any) (any, error) {
+			mu.Lock() // the two moves run in parallel (Promise.all)
 			moves = append(moves, a["app"].(string)+"@"+a["zone"].(string))
+			sort.Strings(moves)
+			mu.Unlock()
 			return true, nil
 		}})
 	reg.MustRegisterModules("aos", testMods, "testdata/mods")
