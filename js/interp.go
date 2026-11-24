@@ -1962,6 +1962,14 @@ func (it *Interp) HostPromise(fn func(ctx context.Context) (Value, error)) *Prom
 	return p
 }
 
+// Rejected returns a promise already rejected with v (OP-1: a failing call
+// rejects rather than throwing synchronously).
+func (it *Interp) Rejected(v Value) *Promise {
+	p := it.newPromise()
+	p.settle(2, v)
+	return p
+}
+
 // then schedules cb to run (under the interpreter lock) once p settles.
 func (it *Interp) then(p *Promise, onFul, onRej Value, depth int, file string) *Promise {
 	out := it.newPromise()
