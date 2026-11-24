@@ -10,6 +10,8 @@ import { sideBySide } from "aos:layout"
 await sideBySide("Code", "Safari", 2)
 ```
 
+Operation names with hyphens are called with brackets, `ops["window-move"]({...})`, because `ops.window-move(...)` parses as a subtraction (check reports it). Errors are thrown the usual way: `throw new Error("no window for " + app)`.
+
 A module can only call the operations you registered, under the same limits, so it adds no privilege. It is checked like a program: an unknown operation or a bad literal argument in a module is a check error, and nothing runs.
 
 ## Names
