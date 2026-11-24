@@ -35,7 +35,7 @@ Code Mode style: a few tools, not one per operation.
 
 Results come back as a text content block holding JSON, plus
 `structuredContent` when the JSON is an object. Programs run under the file
-name `<mcp>`, so relative imports are not available.
+name `<mcp>`, so relative imports are not available; registered modules (`import ... from "scheme:path"`) are.
 
 `Options{ExposeOperations: true}` also lists each operation as its own tool,
 named with dots replaced by underscores (`health.check` -> `health_check`) and

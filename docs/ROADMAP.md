@@ -41,6 +41,9 @@ Each step ships on its own, with tests.
    with `new`/`this`/`super`/`instanceof`, `Map`/`Set`/`Date`, tagged
    templates. Built for karya's agent REPL; approval, quoting and output caps
    stay with the host.
+11. **Host modules (done, v0.8.0)**: a CLI ships JS modules in its build (a
+   folder, one file or content, in all four languages) and agents import them
+   as `scheme:path`. Next: move aos's composed batch recipes into modules.
 
 Next candidates: a benchmark measuring model turns and tokens with a real agent,
 `code run --plan` with a host approval hook for external side effects,

@@ -69,6 +69,7 @@ Use its [MCP adapter](/clicodemode/mcp/) if it ships one: `code_run` on a long-l
 
 ## For skill authors
 
+- Put reusable recipes in [modules](/clicodemode/modules/) baked into your CLI, not in skill prose: `code skill` lists them first, and agents import them by name (`import { x } from "mycli:recipes"`) instead of re-deriving them.
 - Ship the generic skill ([SKILL.md](/clicodemode/reference/skill/)) and the CLI-specific one from `<cli> code skill`.
 - Tell the agent when to use a program: three or more dependent calls, many independent reads, a loop, or data shaping. A single command stays a single command.
 - Show one real program per common task, verified with `code check`.

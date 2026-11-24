@@ -11,10 +11,17 @@ CLI does not support Code Mode; use it normally.
 ## 1. Discover (cache it)
 
 ```sh
-<cli> code capabilities --json   # operations + schemas + fingerprint
+<cli> code capabilities --json   # operations + modules + schemas + fingerprint
+<cli> code modules               # JS building blocks the CLI ships
 <cli> code describe <op> --json  # one contract
+<cli> code describe <scheme:module>  # a module's exports, docs and source
 <cli> code docs                  # language reference
 ```
+
+**Use the CLI's modules first.** If `modules` lists one that does the job
+(`import { sideBySide } from "aos:layout"`), import it instead of rebuilding
+it from raw operations: it is the CLI author's tested recipe, and it is
+checked with your program.
 
 Cache the capability document keyed by `version` + `fingerprint` (and the
 authorization context you ran under). Re-fetch when either changes. Never put

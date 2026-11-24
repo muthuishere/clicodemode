@@ -101,6 +101,18 @@ eng.Policy = codemode.Policy{
 - `Cache.LoadCapabilities` / `SaveCapabilities` with `CapabilityCacheKey(version, fingerprint, authContext)` cache capability documents.
 - Neither stores secret values, approvals or run results.
 
+## Ship recipes as JS modules
+
+Keep operations to primitives (one command, one effect). Put the recipes built on them (layouts, checklists, multi-step flows) in `.js` files baked into the binary, so agents import them instead of rebuilding them:
+
+```go
+//go:embed js
+var jsFiles embed.FS
+reg.MustRegisterModules("mycli", jsFiles, "js") // js/layout.js -> "mycli:layout"
+```
+
+Test them with `engine.CheckModules()`. Folder, single-file and content forms for every language: [Ship your own JS modules](/clicodemode/modules/).
+
 ## Checklist
 
 - [ ] Every operation wraps an existing function or command body.
@@ -109,3 +121,4 @@ eng.Policy = codemode.Policy{
 - [ ] Only operations you would let a program run are registered.
 - [ ] `mycli code version` and `mycli code capabilities --json` work.
 - [ ] You ship `mycli code skill` output, or a hand-written skill, with your CLI.
+- [ ] Composed recipes live in embedded JS modules, not in new Go verbs; `CheckModules()` is in your tests.

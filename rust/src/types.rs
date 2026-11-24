@@ -190,4 +190,25 @@ pub struct Capabilities {
     pub language: LanguageInfo,
     #[serde(default, deserialize_with = "null_default")]
     pub operations: Vec<Operation>,
+    /// JS modules the host ships (`import { x } from "scheme:path"`).
+    #[serde(default, deserialize_with = "null_default")]
+    pub modules: Vec<ModuleInfo>,
+}
+
+/// A module as capabilities describe it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModuleInfo {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default, deserialize_with = "null_default")]
+    pub exports: Vec<ModuleExport>,
+}
+
+/// One exported name and the doc comment above it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModuleExport {
+    pub name: String,
+    #[serde(default)]
+    pub doc: String,
 }

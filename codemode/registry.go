@@ -53,9 +53,10 @@ var opNameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_
 
 // Registry holds operations. It is safe for concurrent use.
 type Registry struct {
-	mu  sync.RWMutex
-	ops map[string]*Operation
-	rev atomic.Uint64 // bumped on every Register/Unregister
+	mu      sync.RWMutex
+	ops     map[string]*Operation
+	rev     atomic.Uint64 // bumped on every Register/Unregister
+	modules map[string]*Module
 	// Version is the host CLI version; it feeds the capability fingerprint.
 	Version string
 }
@@ -144,6 +145,7 @@ type Capabilities struct {
 	Fingerprint string       `json:"fingerprint"`
 	Language    LanguageInfo `json:"language"`
 	Operations  []*Operation `json:"operations"`
+	Modules     []ModuleInfo `json:"modules,omitempty"`
 }
 
 // LanguageInfo states what the program language supports today.
@@ -159,7 +161,7 @@ const SpecVersion = "codemode/v0"
 
 // LibraryVersion is this library's release, printed by `code version` so a
 // runner can tell which build is on its PATH.
-const LibraryVersion = "0.7.1"
+const LibraryVersion = "0.8.0"
 
 // Capabilities returns the full capability document with a fingerprint that
 // changes whenever any operation's public contract changes.
@@ -172,12 +174,21 @@ func (r *Registry) Capabilities() Capabilities {
 		h.Write(b)
 		h.Write([]byte{'\n'})
 	}
+	mods := r.Modules()
+	if mh := modulesHash(mods); mh != "" {
+		fmt.Fprintf(h, "modules %s\n", mh)
+	}
+	var infos []ModuleInfo
+	for _, m := range mods {
+		infos = append(infos, m.Info())
+	}
 	return Capabilities{
 		Spec:        SpecVersion,
 		Version:     r.Version,
 		Fingerprint: "sha256:" + hex.EncodeToString(h.Sum(nil))[:32],
 		Language:    languageInfo,
 		Operations:  ops,
+		Modules:     infos,
 	}
 }
 

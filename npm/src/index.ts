@@ -1,6 +1,9 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { basename, join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getBridge, loadWasm, type Bridge } from "./wasm.js";
 import type {
-  Capabilities, CheckResult, CodeModeOptions, Operation, OperationSpec, Result,
+  Capabilities, CheckResult, CodeModeOptions, ModuleSpec, Operation, OperationSpec, Result,
 } from "./types.js";
 
 export * from "./types.js";
@@ -35,6 +38,13 @@ export interface EvalOptions extends CallOptions {}
 
 export interface CodeMode {
   register(op: OperationSpec): void;
+  /** Add one module from its source text (e.g. bundled with `?raw`). */
+  registerModule(mod: ModuleSpec): void;
+  /** Add one .js/.json file read now (at startup) as "scheme:<file name>". */
+  registerModuleFile(scheme: string, file: string | URL): void;
+  /** Add every .js/.json file under a directory (read now), or every entry of
+   * a {relativePath: source} map (for bundlers), as "scheme:<relative path>". */
+  registerModules(scheme: string, dirOrFiles: string | URL | Record<string, string>): void;
   operations(): Promise<Operation[]>;
   describe(name: string): Promise<Operation>;
   capabilities(): Promise<Capabilities>;
@@ -49,6 +59,7 @@ export interface CodeMode {
 let callSeq = 0;
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*)*$/;
+const MODULE_RE = /^[A-Za-z][A-Za-z0-9_-]*:[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*(\.json)?$/;
 
 function parse<T>(s: string): T {
   const v = JSON.parse(s);
@@ -70,6 +81,14 @@ function text(s: string): string {
 
 export function createCodeMode(options: CodeModeOptions): CodeMode {
   const specs = new Map<string, OperationSpec>();
+  const modules = new Map<string, ModuleSpec>();
+  const addModule = (m: ModuleSpec) => {
+    const name = m.name.replace(/\.js$/, "");
+    if (!MODULE_RE.test(name)) throw new Error(`clicodemode: invalid module name "${m.name}" (want scheme:path, e.g. mycli:layout)`);
+    if (modules.has(name)) throw new Error(`clicodemode: module "${name}" already registered`);
+    modules.set(name, { ...m, name });
+    id = undefined; // engine is rebuilt with the new module set on the next call
+  };
   let id: number | string | undefined;
   let bridgeP: Promise<Bridge> | undefined;
 
@@ -93,6 +112,7 @@ export function createCodeMode(options: CodeModeOptions): CodeMode {
       authorization: s.authorization,
       examples: s.examples,
     })),
+    modules: [...modules.values()].map((m) => ({ name: m.name, source: m.source, description: m.description ?? "" })),
     limits: options.limits,
     moduleRoot: options.moduleRoot,
   });
@@ -147,6 +167,34 @@ export function createCodeMode(options: CodeModeOptions): CodeMode {
       if (specs.has(op.name)) throw new Error(`clicodemode: operation "${op.name}" already registered`);
       specs.set(op.name, op);
       id = undefined; // engine is rebuilt with the new op set on the next call
+    },
+    registerModule(mod) { addModule(mod); },
+    registerModuleFile(scheme, file) {
+      const p = file instanceof URL ? fileURLToPath(file) : file;
+      if (!/\.(js|json)$/.test(p)) throw new Error(`clicodemode: module file "${p}" must end in .js or .json`);
+      addModule({ name: `${scheme}:${basename(p)}`, source: readFileSync(p, "utf8") });
+    },
+    registerModules(scheme, dirOrFiles) {
+      if (typeof dirOrFiles === "object" && !(dirOrFiles instanceof URL)) {
+        for (const [rel, source] of Object.entries(dirOrFiles)) {
+          if (/\.(js|json)$/.test(rel)) addModule({ name: `${scheme}:${rel.replace(/^\.?\//, "")}`, source });
+        }
+        return;
+      }
+      const root = dirOrFiles instanceof URL ? fileURLToPath(dirOrFiles) : dirOrFiles;
+      let n = 0;
+      const walk = (dir: string) => {
+        for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+          const full = join(dir, e.name);
+          if (e.isDirectory()) walk(full);
+          else if (/\.(js|json)$/.test(e.name)) {
+            n++;
+            addModule({ name: `${scheme}:${relative(root, full).split(sep).join("/")}`, source: readFileSync(full, "utf8") });
+          }
+        }
+      };
+      walk(root);
+      if (n === 0) throw new Error(`clicodemode: no .js or .json files under "${root}"`);
     },
     async operations() { const { b, id } = await ready(); return parse<Operation[]>(b.operations(id)); },
     async describe(name) { const { b, id } = await ready(); return parse<Operation>(b.describe(id, name)); },

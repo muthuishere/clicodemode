@@ -65,6 +65,15 @@ rejects the whole and stops starting new items:
 Not supported (reported as errors): generators, delete, getters/setters
 and #private class members, dynamic import(), eval, require, npm packages.
 
+## Modules this CLI ships
+
+A CLI may ship its own JavaScript modules: higher-level building blocks
+over its operations. List them with "modules", read one with
+"describe <module>", and import by name:
+
+    import { sideBySide } from "aos:layout"
+    await sideBySide("Code", "Safari")
+
 ## Processes and streams (only if this host permits them)
 
     const r = await exec(["git", "status", "--short"])   // {ok, exitCode, stdout, stderr}

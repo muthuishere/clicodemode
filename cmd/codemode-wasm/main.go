@@ -57,7 +57,13 @@ import (
 type config struct {
 	Version    string               `json:"version"`
 	Operations []codemode.Operation `json:"operations"`
-	Limits     struct {
+	// Modules are JS/JSON modules the host ships in its build (import "scheme:name").
+	Modules []struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Source      string `json:"source"`
+	} `json:"modules"`
+	Limits struct {
 		MaxSteps       int64 `json:"max_steps"`
 		MaxCallDepth   int   `json:"max_call_depth"`
 		MaxConcurrency int   `json:"max_concurrency"`
@@ -230,6 +236,11 @@ func create(this js.Value, a []js.Value) any {
 			return codemode.OrderedJSON([]byte(text)), nil
 		}
 		if err := reg.Register(op); err != nil {
+			return map[string]any{"error": err.Error()}
+		}
+	}
+	for _, m := range cfg.Modules {
+		if err := reg.RegisterModule(codemode.Module{Name: m.Name, Description: m.Description, Source: m.Source}); err != nil {
 			return map[string]any{"error": err.Error()}
 		}
 	}
